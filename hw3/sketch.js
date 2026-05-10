@@ -1,4 +1,5 @@
 import {createPart1} from "./parts/part1.js";
+import {createPart2_1} from "./parts/part2.1.js";
 import {TaskHandler} from "./taskHandler.js";
 
 new p5((p) => {
@@ -11,22 +12,21 @@ new p5((p) => {
 
   p.setup = () => {
     p.createCanvas(1280, 720, p.WEBGL);
-    p.fullscreen(true);
     p.textFont(font);
     camera = p.createCamera();
     gl = p.canvas.getContext(p.WEBGL);
-    p.camera(100, 50, 100, 0, 0, 0, 0, -1, 0);
 
     task.loadPart("part1", createPart1(p));
+    task.loadPart("part2.1", createPart2_1(p));
 
-    task.setPart("part1");
+    task.setPart("part2.1");
   };
 
   p.draw = () => {
     p.ambientLight(255);
     p.background(200);
 
-    p.orbitControl();
+    p.orbitControl(2.5, 2.5, 2.5);
 
     task.update(physics_delta);
 
@@ -49,13 +49,28 @@ new p5((p) => {
     p.drawingContext.disable(p.drawingContext.DEPTH_TEST);
     p.camera();
     task.render2D();
+
+    p.push();
+    p.noStroke();
+    p.translate(-p.width / 2, -p.height / 2);
+    p.fill(255, 255, 220);
+    p.textSize(20);
+    p.textAlign(p.LEFT, p.BOTTOM);
+    p.text(`Scene: ${task.currentPartName}`, 16, p.height - 40);
+    p.text(`Press 1, 2, 3, 4 to switch to needed scene`, 16, p.height - 16);
+    p.pop();
+
     p.camera(...camParams);
     p.drawingContext.enable(p.drawingContext.DEPTH_TEST);
   };
 
   p.keyPressed = () => {
     if (p.key === "1")
-      task.setPart("task1");
+      task.setPart("part1");
+    if (p.key === "2")
+      task.setPart("part2.1");
+    // if (p.key === "3")
+    //   task.setPart("part2.2");
     task.keyPressed(p.key);
   };
 

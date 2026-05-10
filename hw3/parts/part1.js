@@ -4,10 +4,10 @@ import * as quat from "../libraries/esm/quat.js";
 import * as vec3 from "../libraries/esm/vec3.js";
 
 const sim_modes = [
-  {name : "global", label : "1) Global coordinate system"},
-  {name : "global", label : "2.1) Local coordinate system without gyroscopic term"},
-  {name : "global", label : "2.2.1) Local coordinate system with gyroscopic term, explicit"},
-  {name : "global", label : "2.2.2) Local coordinate system with gyroscopic term, implicit"},
+  {label : "1) Global coordinate system"},
+  {label : "2.1) Local coordinate system without gyroscopic term"},
+  {label : "2.2.1) Local coordinate system with gyroscopic term, explicit"},
+  {label : "2.2.2) Local coordinate system with gyroscopic term, implicit"},
 ];
 /**
  * Get the skew matrix from vector
@@ -56,12 +56,14 @@ export function createPart1(p)
       let body = makeBody();
       renderParams = body.renderParams;
       physicsParams = body.physicsParams;
+      p.camera(100, 50, 100, 0, 0, 0, 0, -1, 0);
     },
 
     reset() {
       let body = makeBody();
       renderParams = body.renderParams;
       physicsParams = body.physicsParams;
+      p.camera(100, 50, 100, 0, 0, 0, 0, -1, 0);
     },
 
     update(dt) {
@@ -114,19 +116,19 @@ export function createPart1(p)
     const rotMatrix = mat3.create();
     const rotMatrixTransposed = mat3.create();
     mat3.fromQuat(rotMatrix, physicsParams.currentQuat);
-    mat3.transpose(rotMatrixTransposed, rotMatrixTransposed);
+    mat3.transpose(rotMatrixTransposed, rotMatrix);
 
     const temp = mat3.create();
     const worldInertia = mat3.create()
     const worldInertiaInv = mat3.create()
 
-    mat3.multiply(temp, physicsParams.localInertiaTensor, rotMatrix);
+    mat3.multiply(temp, rotMatrix, physicsParams.localInertiaTensor);
     mat3.multiply(worldInertia, rotMatrixTransposed, temp);
     mat3.invert(worldInertiaInv, worldInertia);
     vec3.transformMat3(
       physicsParams.nextAngleSpeed, physicsParams.initialAngularMomentum, worldInertiaInv);
 
-    updateNextQuat(dt);
+    updateNextQuat(dt, true);
 
     vec3.copy(physicsParams.currentAngleSpeed, physicsParams.nextAngleSpeed);
     quat.copy(physicsParams.currentQuat, physicsParams.nextQuat);
@@ -148,7 +150,7 @@ export function createPart1(p)
       physicsParams.currentAngleSpeed,
       physicsParams.nextAngleSpeed); // doesn't change in this scenario
 
-    updateNextQuat(dt);
+    updateNextQuat(dt, false);
 
     const rotMatrix = mat3.create();
     mat3.fromQuat(rotMatrix, physicsParams.nextQuat);
@@ -169,7 +171,7 @@ export function createPart1(p)
     vec3.add(physicsParams.nextAngleSpeed, physicsParams.currentAngleSpeed, gyroTerm);
 
     vec3.copy(physicsParams.currentAngleSpeed, physicsParams.nextAngleSpeed);
-    updateNextQuat(dt);
+    updateNextQuat(dt, false);
 
     const rotMatrix = mat3.create();
     mat3.fromQuat(rotMatrix, physicsParams.nextQuat);
@@ -206,7 +208,7 @@ export function createPart1(p)
     vec3.add(physicsParams.nextAngleSpeed, physicsParams.currentAngleSpeed, angleCorrection);
     vec3.copy(physicsParams.currentAngleSpeed, physicsParams.nextAngleSpeed);
 
-    updateNextQuat(dt);
+    updateNextQuat(dt, false);
 
     const rotMatrix = mat3.create();
     mat3.fromQuat(rotMatrix, physicsParams.nextQuat);
@@ -214,7 +216,7 @@ export function createPart1(p)
     quat.copy(physicsParams.currentQuat, physicsParams.nextQuat);
   }
 
-  function updateNextQuat(dt)
+  function updateNextQuat(dt, isWorld)
   {
     const angleQuat = quat.fromValues(
       0.5 * dt * physicsParams.nextAngleSpeed[0],
@@ -222,7 +224,14 @@ export function createPart1(p)
       0.5 * dt * physicsParams.nextAngleSpeed[2],
       0);
     const finalAddQuat = quat.create();
-    quat.multiply(finalAddQuat, angleQuat, physicsParams.currentQuat);
+    if (isWorld === false)
+    {
+      quat.multiply(finalAddQuat, angleQuat, physicsParams.currentQuat);
+    }
+    else
+    {
+      quat.multiply(finalAddQuat, physicsParams.currentQuat, angleQuat);
+    }
     quat.add(physicsParams.nextQuat, physicsParams.currentQuat, finalAddQuat);
     quat.normalize(physicsParams.nextQuat, physicsParams.nextQuat);
   }
@@ -274,7 +283,7 @@ export function createPart1(p)
     p.fill(40, 40, 42, 220);
     p.translate(-p.width / 2, -p.height / 2);
     p.rect(16, 16, 500, 350, 8);
-    p.fill(229, 231, 235);
+    p.fill(220, 230, 230);
     p.textSize(14);
     p.textAlign(p.LEFT, p.TOP);
     p.text("Part 1: 3D rectangular rigid body rotation", 32, 30);
@@ -314,7 +323,7 @@ export function createPart1(p)
     const dir = vec3.fromValues(vecX, vecY, vecZ);
     vec3.normalize(dir, dir);
     const angle = vec3.angle(up, dir);
-    const axis = vec3.create();
+    let axis = vec3.create();
     vec3.cross(axis, up, dir);
     if (vec3.squaredLength(axis) < 0.0001)
     {
