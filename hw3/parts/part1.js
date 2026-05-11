@@ -39,6 +39,7 @@ export function createPart1(p)
   let physicsParams = {
     mass : 0,
     localInertiaTensor : mat3.create(),
+    worldInertiaTensor : mat3.create(),
     currentQuat : quat.create(),
     nextQuat : quat.create(),
     currentAngleSpeed : vec3.fromValues(0, 0, 0),
@@ -53,14 +54,14 @@ export function createPart1(p)
 
   return {
     init() {
-      let body = makeBody();
+      let body = makeBody(currentMode);
       renderParams = body.renderParams;
       physicsParams = body.physicsParams;
       p.camera(100, 50, 100, 0, 0, 0, 0, -1, 0);
     },
 
     reset() {
-      let body = makeBody();
+      let body = makeBody(currentMode);
       renderParams = body.renderParams;
       physicsParams = body.physicsParams;
       p.camera(100, 50, 100, 0, 0, 0, 0, -1, 0);
@@ -113,31 +114,35 @@ export function createPart1(p)
 
   function globalCoordsSim(dt)
   {
+    vec3.copy(physicsParams.currentAngleSpeed, physicsParams.nextAngleSpeed);
+    quat.copy(physicsParams.currentQuat, physicsParams.nextQuat);
+
+    updateWorldInertia();
+    const worldInertiaInv = mat3.create()
+
+    mat3.invert(worldInertiaInv, physicsParams.worldInertiaTensor);
+    vec3.transformMat3(
+      physicsParams.nextAngleSpeed, physicsParams.currentAngularMomentum, worldInertiaInv);
+
+    updateNextQuat(dt, true);
+
+    vec3.transformMat3(
+      physicsParams.currentAngularMomentum,
+      physicsParams.nextAngleSpeed,
+      physicsParams.worldInertiaTensor);
+  }
+
+  function updateWorldInertia()
+  {
     const rotMatrix = mat3.create();
     const rotMatrixTransposed = mat3.create();
     mat3.fromQuat(rotMatrix, physicsParams.currentQuat);
     mat3.transpose(rotMatrixTransposed, rotMatrix);
 
     const temp = mat3.create();
-    const worldInertia = mat3.create()
-    const worldInertiaInv = mat3.create()
 
-    mat3.multiply(temp, rotMatrix, physicsParams.localInertiaTensor);
-    mat3.multiply(worldInertia, rotMatrixTransposed, temp);
-    mat3.invert(worldInertiaInv, worldInertia);
-    vec3.transformMat3(
-      physicsParams.nextAngleSpeed, physicsParams.initialAngularMomentum, worldInertiaInv);
-
-    updateNextQuat(dt, true);
-
-    vec3.copy(physicsParams.currentAngleSpeed, physicsParams.nextAngleSpeed);
-    quat.copy(physicsParams.currentQuat, physicsParams.nextQuat);
-
-    const Jw = vec3.create();
-    vec3.transformMat3(Jw, physicsParams.currentAngleSpeed, physicsParams.localInertiaTensor);
-    const currentRotMatrix = mat3.create();
-    mat3.fromQuat(currentRotMatrix, physicsParams.currentQuat);
-    vec3.transformMat3(physicsParams.currentAngularMomentum, Jw, currentRotMatrix);
+    mat3.multiply(temp, physicsParams.localInertiaTensor, rotMatrixTransposed);
+    mat3.multiply(physicsParams.worldInertiaTensor, rotMatrix, temp);
   }
 
   function localCoordsSim(dt)
@@ -152,9 +157,10 @@ export function createPart1(p)
 
     updateNextQuat(dt, false);
 
-    const rotMatrix = mat3.create();
-    mat3.fromQuat(rotMatrix, physicsParams.nextQuat);
-    vec3.transformMat3(physicsParams.currentAngularMomentum, Jw, rotMatrix);
+    vec3.transformMat3(
+      physicsParams.currentAngularMomentum,
+      physicsParams.currentAngleSpeed,
+      physicsParams.localInertiaTensor);
     quat.copy(physicsParams.currentQuat, physicsParams.nextQuat);
   }
 
@@ -173,9 +179,10 @@ export function createPart1(p)
     vec3.copy(physicsParams.currentAngleSpeed, physicsParams.nextAngleSpeed);
     updateNextQuat(dt, false);
 
-    const rotMatrix = mat3.create();
-    mat3.fromQuat(rotMatrix, physicsParams.nextQuat);
-    vec3.transformMat3(physicsParams.currentAngularMomentum, Jw, rotMatrix);
+    vec3.transformMat3(
+      physicsParams.currentAngularMomentum,
+      physicsParams.nextAngleSpeed,
+      physicsParams.localInertiaTensor);
     quat.copy(physicsParams.currentQuat, physicsParams.nextQuat);
   }
 
@@ -210,9 +217,10 @@ export function createPart1(p)
 
     updateNextQuat(dt, false);
 
-    const rotMatrix = mat3.create();
-    mat3.fromQuat(rotMatrix, physicsParams.nextQuat);
-    vec3.transformMat3(physicsParams.currentAngularMomentum, Jw, rotMatrix);
+    vec3.transformMat3(
+      physicsParams.currentAngularMomentum,
+      physicsParams.nextAngleSpeed,
+      physicsParams.localInertiaTensor);
     quat.copy(physicsParams.currentQuat, physicsParams.nextQuat);
   }
 
@@ -224,7 +232,7 @@ export function createPart1(p)
       0.5 * dt * physicsParams.nextAngleSpeed[2],
       0);
     const finalAddQuat = quat.create();
-    if (isWorld === false)
+    if (isWorld === true)
     {
       quat.multiply(finalAddQuat, angleQuat, physicsParams.currentQuat);
     }
@@ -239,9 +247,16 @@ export function createPart1(p)
   function updateEnergy()
   {
     const Jw = vec3.create();
-    vec3.transformMat3(Jw, physicsParams.currentAngleSpeed, physicsParams.localInertiaTensor);
-
-    physicsParams.currentEnergy = 0.5 * vec3.dot(Jw, physicsParams.currentAngleSpeed);
+    if (currentMode === 0)
+    {
+      vec3.transformMat3(Jw, physicsParams.currentAngleSpeed, physicsParams.worldInertiaTensor);
+      physicsParams.currentEnergy = 0.5 * vec3.dot(Jw, physicsParams.currentAngleSpeed);
+    }
+    else
+    {
+      vec3.transformMat3(Jw, physicsParams.currentAngleSpeed, physicsParams.localInertiaTensor);
+      physicsParams.currentEnergy = 0.5 * vec3.dot(Jw, physicsParams.currentAngleSpeed);
+    }
   }
 
   function updateRenderParams()
@@ -359,16 +374,16 @@ export function createPart1(p)
 }
 
 
-function makeBody()
+function makeBody(currentMode)
 {
-  const mass = 5.0;
+  const mass = 1.0;
   const width = 60;
   const height = 20;
   const depth = 20;
 
-  const inertiaX = mass * (width * width + height * height) / 12.0;
-  const inertiaY = mass * (depth * depth + height * height) / 12.0;
-  const inertiaZ = mass * (depth * depth + width * width) / 12.0;
+  const inertiaX = mass * (depth * depth + height * height) / 12.0;
+  const inertiaY = mass * (depth * depth + width * width) / 12.0;
+  const inertiaZ = mass * (width * width + height * height) / 12.0;
 
   // clang-format off
   const inertia = mat3.fromValues(
@@ -377,14 +392,44 @@ function makeBody()
     0, 0, inertiaZ, // column 3
   );
   // clang-format on
-  const currentAngleSpeed = vec3.fromValues(0.2, 0.2, 5.0);
+  let wx = 0.2;
+  let wy = 0.2;
+  let wz = 5.0;
+  if (currentMode === 0 || currentMode === 1)
+  {
+    wx = 0.0;
+    wy = 0.2;
+    wz = 5.0;
+  }
+
+  const currentAngleSpeed = vec3.fromValues(wx, wy, wz);
   const nextAngleSpeed = vec3.clone(currentAngleSpeed);
 
   const initialQuat = quat.create();
   const nextQuat = quat.clone(initialQuat);
 
+  // making L global in first scene
   const initialAngularMomentum = vec3.create();
-  vec3.transformMat3(initialAngularMomentum, currentAngleSpeed, inertia);
+  const worldInertia = mat3.create();
+  if (currentMode === 0)
+  {
+    const rotMatrix = mat3.create();
+    const rotMatrixTransposed = mat3.create();
+    mat3.fromQuat(rotMatrix, initialQuat);
+    mat3.transpose(rotMatrixTransposed, rotMatrix);
+
+    const temp = mat3.create();
+
+    mat3.multiply(temp, inertia, rotMatrixTransposed);
+    mat3.multiply(worldInertia, rotMatrix, temp);
+
+    vec3.transformMat3(initialAngularMomentum, currentAngleSpeed, worldInertia);
+  }
+  else
+  {
+    vec3.transformMat3(initialAngularMomentum, currentAngleSpeed, inertia);
+  }
+
   const currentAngularMomentum = vec3.clone(initialAngularMomentum)
 
   const energy = 0.5 * vec3.dot(initialAngularMomentum, currentAngleSpeed);
@@ -400,6 +445,7 @@ function makeBody()
     physicsParams : {
       mass : mass,
       localInertiaTensor : inertia,
+      worldInertiaTensor : worldInertia,
       currentQuat : initialQuat,
       nextQuat : nextQuat,
       currentAngleSpeed : currentAngleSpeed,

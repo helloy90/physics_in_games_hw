@@ -1,5 +1,6 @@
 import {createPart1} from "./parts/part1.js";
 import {createPart2_1} from "./parts/part2.1.js";
+import {createPart2_2} from "./parts/part2.2.js";
 import {TaskHandler} from "./taskHandler.js";
 
 new p5((p) => {
@@ -7,19 +8,18 @@ new p5((p) => {
   let physics_delta = 1.0 / 60.0;
   let font;
   let camera;
-  let gl;
   p.preload = () => { font = p.loadFont('assets/font.ttf'); };
 
   p.setup = () => {
     p.createCanvas(1280, 720, p.WEBGL);
     p.textFont(font);
     camera = p.createCamera();
-    gl = p.canvas.getContext(p.WEBGL);
 
     task.loadPart("part1", createPart1(p));
     task.loadPart("part2.1", createPart2_1(p));
+    task.loadPart("part2.2", createPart2_2(p));
 
-    task.setPart("part2.1");
+    task.setPart("part1");
   };
 
   p.draw = () => {
@@ -69,8 +69,8 @@ new p5((p) => {
       task.setPart("part1");
     if (p.key === "2")
       task.setPart("part2.1");
-    // if (p.key === "3")
-    //   task.setPart("part2.2");
+    if (p.key === "3")
+      task.setPart("part2.2");
     task.keyPressed(p.key);
   };
 

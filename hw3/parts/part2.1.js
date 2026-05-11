@@ -38,9 +38,10 @@ export function createPart2_1(p)
   let frameInfo = {
     force : vec3.create(),
     torque : vec3.create(),
+    correction : 0,
   };
   let stopSim = true;
-  let currentMode = 1;
+  let currentMode = 0;
 
   return {
     init() {
@@ -88,27 +89,17 @@ export function createPart2_1(p)
       switch (currentMode)
       {
       case 0:
-        params = updateSpringForcesAndTorque();
+        params = updateSpringForcesAndTorque(dt);
         break;
       case 1:
         params = updateSpringImpulse(dt);
         break;
       }
 
-      vec3.copy(frameInfo.force, params.force);
-      vec3.copy(frameInfo.torque, params.torque);
-
-      vec3.scale(params.force, params.force, params.invEffMass * dt);
-      vec3.add(body.nextVelocity, body.currentVelocity, params.force);
-
-      vec3.scale(params.torque, params.torque, dt);
-      vec3.add(body.currentAngularMomentum, body.currentAngularMomentum, params.torque);
-      vec3.transformMat3(body.nextAngleSpeed, body.currentAngularMomentum, params.worldInertiaInv);
-
       vec3.add(
         body.nextWorldPos, body.currentWorldPos, vec3.scale(vec3.create(), body.nextVelocity, dt));
 
-      updateNextQuat(dt, true);
+      updateNextQuat(dt, false);
 
       mat4.fromRotationTranslation(body.currentTransformMatrix, body.nextQuat, body.nextWorldPos);
     },
@@ -134,22 +125,28 @@ export function createPart2_1(p)
     },
   };
 
-  function updateSpringForcesAndTorque()
+  function updateSpringForcesAndTorque(dt)
   {
     const params = getSpringCurrentParams();
 
     const force = vec3.clone(params.vecToSpringPosNorm);
     vec3.scale(force, force, spring.stiffness * params.stretch);
     vec3.scaleAndAdd(force, force, params.connectionPointVelocity, -spring.damping);
+
     const torque = vec3.create();
     vec3.cross(torque, params.vecToConnectionPos, force);
 
-    return {
-      invEffMass : params.invEffMass,
-      force : force,
-      torque : torque,
-      worldInertiaInv : params.worldInertiaInv,
-    };
+    // vec3.transformMat4(torque, torque, params.invTransform);
+
+    vec3.copy(frameInfo.force, force);
+    vec3.copy(frameInfo.torque, torque);
+
+    vec3.scale(force, force, params.invEffMass * dt);
+    vec3.add(body.nextVelocity, body.currentVelocity, force);
+
+    vec3.scale(torque, torque, dt);
+    vec3.add(body.currentAngularMomentum, body.currentAngularMomentum, torque);
+    vec3.transformMat3(body.nextAngleSpeed, body.currentAngularMomentum, params.worldInertiaInv);
   }
 
   function updateSpringImpulse(dt)
@@ -157,7 +154,7 @@ export function createPart2_1(p)
     const params = getSpringCurrentParams();
 
     const effMass = 1.0 / params.invEffMass;
-    const Jv = vec3.dot(params.vecToSpringPosNorm, params.connectionPointVelocity);
+    const Jv = -vec3.dot(params.vecToSpringPosNorm, params.connectionPointVelocity);
 
     const omega = 2.0 * Math.PI * spring.hzFreq;
     const k = effMass * omega * omega;
@@ -169,16 +166,20 @@ export function createPart2_1(p)
     const lambda = -(Jv + (beta * params.stretch) / dt) / (gamma);
 
     const force = vec3.clone(params.vecToSpringPosNorm);
-    vec3.scale(force, force, lambda);
-    const torque = vec3.create();
-    vec3.cross(torque, params.vecToConnectionPos, force);
+    vec3.scale(force, force, -lambda);
+    const torque = vec3.clone(params.rCrossN);
+    vec3.transformMat3(torque, torque, params.worldInertiaInv);
+    vec3.scale(torque, torque, -lambda);
 
-    return {
-      invEffMass : params.invEffMass,
-      force : force,
-      torque : torque,
-      worldInertiaInv : params.worldInertiaInv,
-    };
+    vec3.copy(frameInfo.force, force);
+    vec3.copy(frameInfo.torque, torque);
+    frameInfo.correction = lambda;
+
+    vec3.scale(force, force, params.invEffMass * dt);
+    vec3.add(body.nextVelocity, body.currentVelocity, force);
+
+    vec3.scale(torque, torque, dt);
+    vec3.add(body.nextAngleSpeed, body.currentAngleSpeed, torque);
   }
 
   function getSpringCurrentParams()
@@ -192,8 +193,8 @@ export function createPart2_1(p)
     const worldInertia = mat3.create()
     const worldInertiaInv = mat3.create()
 
-    mat3.multiply(temp, rotMatrix, body.localInertiaTensor);
-    mat3.multiply(worldInertia, rotMatrixTransposed, temp);
+    mat3.multiply(temp, rotMatrixTransposed, body.localInertiaTensor);
+    mat3.multiply(worldInertia, rotMatrix, temp);
     mat3.invert(worldInertiaInv, worldInertia);
 
     const worldConnectionPos = vec3.create();
@@ -201,8 +202,19 @@ export function createPart2_1(p)
     const vecToConnectionPos = vec3.create();
     vec3.subtract(vecToConnectionPos, worldConnectionPos, body.currentWorldPos);
 
+
     const vecToSpringPos = vec3.create();
     vec3.subtract(vecToSpringPos, spring.worldPos, worldConnectionPos);
+
+    const invTransform = mat4.create();
+    mat4.invert(invTransform, body.currentTransformMatrix);
+    const localSpringPos = vec3.create();
+    vec3.transformMat4(localSpringPos, spring.worldPos, invTransform);
+    const localVecToSpringPos = vec3.create();
+    vec3.subtract(localVecToSpringPos, localSpringPos, body.connectionPos);
+    const localVecToSpringPosNorm = vec3.create();
+
+    vec3.normalize(localVecToSpringPosNorm, localVecToSpringPos);
 
     const vecLength = vec3.length(vecToSpringPos);
     const stretch = vecLength - spring.restLength;
@@ -224,10 +236,13 @@ export function createPart2_1(p)
     return {
       vecToConnectionPos : vecToConnectionPos,
       vecToSpringPosNorm : vecToSpringPosNorm,
+      localVecToSpringPosNorm : localVecToSpringPosNorm,
+      rCrossN : rCrossN,
       connectionPointVelocity : connectionPointVelocity,
       stretch : stretch,
       invEffMass : invEffMass,
       worldInertiaInv : worldInertiaInv,
+      invTransform : invTransform,
     };
   }
 
@@ -239,7 +254,7 @@ export function createPart2_1(p)
       0.5 * dt * body.nextAngleSpeed[2],
       0);
     const finalAddQuat = quat.create();
-    if (isWorld === false)
+    if (isWorld === true)
     {
       quat.multiply(finalAddQuat, angleQuat, body.currentQuat);
     }
@@ -381,6 +396,10 @@ export function createPart2_1(p)
         frameInfo.torque[1].toFixed(4)}, z:${frameInfo.torque[2].toFixed(4)}`,
       32,
       216);
+    if (currentMode === 1)
+    {
+      p.text(`Current Correction (lambda):${frameInfo.correction.toFixed(4)}`, 32, 240);
+    }
 
     p.fill(250, 50, 50);
     p.text(`Red arrow - Current Force`, 32, 270);
@@ -397,9 +416,9 @@ function makeBody()
   const height = 20;
   const depth = 20;
 
-  const inertiaX = mass * (width * width + height * height) / 12.0;
-  const inertiaY = mass * (depth * depth + height * height) / 12.0;
-  const inertiaZ = mass * (depth * depth + width * width) / 12.0;
+  const inertiaX = mass * (depth * depth + height * height) / 12.0;
+  const inertiaY = mass * (depth * depth + width * width) / 12.0;
+  const inertiaZ = mass * (width * width + height * height) / 12.0;
 
   // clang-format off
   const inertia = mat3.fromValues(
@@ -450,12 +469,13 @@ function makeForceSpring()
     damping : 4,
   };
 }
+
 function makeBuddaSpring()
 {
   return {
     worldPos : vec3.fromValues(0, 0, 80),
     restLength : 20,
-    hzFreq : 2,
-    damping : 5,
+    hzFreq : 0.5,
+    damping : 2,
   };
 }
