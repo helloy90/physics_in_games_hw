@@ -393,7 +393,7 @@ export function createPart2_2(p)
     p.noStroke();
     p.fill(40, 40, 42, 220);
     p.translate(-p.width / 2, -p.height / 2);
-    p.rect(16, 16, 500, 350, 8);
+    p.rect(16, 16, 500, 200, 8);
     p.fill(229, 231, 235);
     p.textSize(14);
     p.textAlign(p.LEFT, p.TOP);

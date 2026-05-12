@@ -473,7 +473,7 @@ export function createPart2_3(p)
     p.noStroke();
     p.fill(40, 40, 42, 220);
     p.translate(-p.width / 2, -p.height / 2);
-    p.rect(16, 16, 500, 350, 8);
+    p.rect(16, 16, 600, 250, 8);
     p.fill(229, 231, 235);
     p.textSize(14);
     p.textAlign(p.LEFT, p.TOP);
@@ -490,29 +490,10 @@ export function createPart2_3(p)
         body2.currentWorldPos[1].toFixed(4)}, z:${body2.currentWorldPos[2].toFixed(4)}`,
       32,
       168);
-    // if (currentMode == 0)
-    // {
-    //   p.text(
-    //     `Current World Position x:${body.currentWorldPos[0].toFixed(4)}, y:${
-    //       body.currentWorldPos[1].toFixed(4)}, z:${body.currentWorldPos[2].toFixed(4)}`,
-    //     32,
-    //     168);
-    //   p.text(
-    //     `Current Force (F) x:${frameInfo.force[0].toFixed(4)}, y:${
-    //       frameInfo.force[1].toFixed(4)}, z:${frameInfo.force[2].toFixed(4)}`,
-    //     32,
-    //     192);
-    //   p.text(
-    //     `Current Torque (T) x:${frameInfo.torque[0].toFixed(4)}, y:${
-    //       frameInfo.torque[1].toFixed(4)}, z:${frameInfo.torque[2].toFixed(4)}`,
-    //     32,
-    //     216);
-
     p.fill(250, 50, 50);
-    p.text(`Red arrow - Current Force`, 32, 270);
+    p.text(`Red arrow - Current Force`, 32, 210);
     p.fill(50, 150, 250);
-    p.text(`Blue Arrow - Current Torque`, 32, 290);
-    // }
+    p.text(`Blue Arrow - Current Torque`, 32, 230);
     p.pop();
   }
 }
