@@ -4,8 +4,8 @@ import * as quat from "../libraries/esm/quat.js";
 import * as vec3 from "../libraries/esm/vec3.js";
 
 const sim_modes = [
-  {label : "1) Rigid Body connected to spring (calculated as force)"},
-  {label : "2) Rigid Body connected to spring (calculated as budda spring)"},
+  {label : "1.1) Rigid Body connected to spring (calculated as force)"},
+  {label : "1.2) Rigid Body connected to spring (calculated as budda spring)"},
 ];
 
 export function createPart2_1(p)
@@ -163,7 +163,7 @@ export function createPart2_1(p)
     const beta = (dt * k) / denom;
     const gamma = 1.0 / denom;
 
-    const lambda = -(Jv + (beta * params.stretch) / dt) / (gamma);
+    const lambda = -(Jv + (beta * params.stretch) / dt) / (params.invEffMass + gamma);
 
     const force = vec3.clone(params.vecToSpringPosNorm);
     vec3.scale(force, force, -lambda);

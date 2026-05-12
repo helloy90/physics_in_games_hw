@@ -1,6 +1,7 @@
 import {createPart1} from "./parts/part1.js";
 import {createPart2_1} from "./parts/part2.1.js";
 import {createPart2_2} from "./parts/part2.2.js";
+import {createPart2_3} from "./parts/part2.3.js";
 import {TaskHandler} from "./taskHandler.js";
 
 new p5((p) => {
@@ -18,6 +19,7 @@ new p5((p) => {
     task.loadPart("part1", createPart1(p));
     task.loadPart("part2.1", createPart2_1(p));
     task.loadPart("part2.2", createPart2_2(p));
+    task.loadPart("part2.3", createPart2_3(p));
 
     task.setPart("part1");
   };

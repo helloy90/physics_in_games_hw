@@ -398,7 +398,7 @@ function makeBody(currentMode)
   if (currentMode === 0 || currentMode === 1)
   {
     wx = 0.0;
-    wy = 0.2;
+    wy = 0.1;
     wz = 5.0;
   }
 

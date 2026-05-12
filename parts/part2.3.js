@@ -4,10 +4,12 @@ import * as quat from "../libraries/esm/quat.js";
 import * as vec3 from "../libraries/esm/vec3.js";
 
 const sim_modes = [
-  {label : "2.1) Connected with spring (XPBD)"},
+  {label : "2.2.1)  Connected with spring (Sequential impulses with baumgarte stabilization)"},
+  {label : "2.2.2)  Connected with spring (Sequential impulses with Nonlinear Gauss-Seidel)"},
+  {label : "2.2.3)  Connected with spring (Sequential impulses with budda string)"},
 ];
 
-export function createPart2_2(p)
+export function createPart2_3(p)
 {
   let body1 = {
     mass : 0,
@@ -48,7 +50,7 @@ export function createPart2_2(p)
   let spring = {
     restLength : 30,
     stiffness : 1,
-    compliance : 0.001,
+    compliance : 0.000,
     dampingLin : 0.3,
     dampingAng : 0.3,
   };
@@ -58,13 +60,41 @@ export function createPart2_2(p)
   };
   let lambda = 0;
   let stopSim = true;
-  let subSteps = 20;
+  let subSteps = 5;
   let currentMode = 0;
 
   return {
-    init() { resetImpl(); },
+    init() {
+      body1 = makeBody(5.0, 60, 20, 20, vec3.fromValues(0, 0, 0), vec3.fromValues(15, 5, 5));
+      body2 = makeBody(5.0, 60, 20, 20, vec3.fromValues(0, 0, 60), vec3.fromValues(15, 5, -5));
+      lambda = 0;
+      if (currentMode === 0)
+      {
+        spring = makeForceSpring();
+      }
+      else
+      {
+        spring = makeBuddaSpring()
+      }
 
-    reset() { resetImpl(); },
+      p.camera(150, 75, 150, 0, 0, 0, 0, -1, 0);
+    },
+
+    reset() {
+      body1 = makeBody(5.0, 60, 20, 20, vec3.fromValues(0, 0, 0), vec3.fromValues(15, 5, 5));
+      body2 = makeBody(5.0, 60, 20, 20, vec3.fromValues(0, 0, 60), vec3.fromValues(15, 5, -5));
+      lambda = 0;
+      if (currentMode === 0)
+      {
+        spring = makeForceSpring();
+      }
+      else
+      {
+        spring = makeBuddaSpring()
+      }
+
+      p.camera(150, 75, 150, 0, 0, 0, 0, -1, 0);
+    },
 
     update(dt) {
       if (stopSim)
@@ -74,14 +104,12 @@ export function createPart2_2(p)
       switch (currentMode)
       {
       case 0:
-        xpbdStep(dt);
         break;
       case 1:
         break;
       case 2:
         break;
-      case 3:
-        break;
+
       }
     },
 
@@ -105,131 +133,6 @@ export function createPart2_2(p)
       }
     },
   };
-
-  function resetImpl()
-  {
-    body1 = makeBody(5.0, 60, 20, 20, vec3.fromValues(0, 0, 0), vec3.fromValues(15, 5, 5));
-    body2 = makeBody(5.0, 60, 20, 20, vec3.fromValues(0, 0, 60), vec3.fromValues(-15, 5, -5));
-    lambda = 0;
-    spring = makeForceSpring();
-
-    p.camera(150, 75, 150, 0, 0, 0, 0, -1, 0);
-  }
-
-  function xpbdStep(dt)
-  {
-    const subDt = dt / subSteps;
-    for (let step = 0; step < subSteps; step++)
-    {
-      prePosSolve(body1, subDt);
-      prePosSolve(body2, subDt);
-
-      solvePosConstraints(subDt);
-
-      postPosSolve(body1, subDt);
-      postPosSolve(body2, subDt);
-    }
-
-    mat4.fromRotationTranslation(
-      body1.currentTransformMatrix, body1.currentQuat, body1.currentWorldPos);
-    mat4.fromRotationTranslation(
-      body2.currentTransformMatrix, body2.currentQuat, body2.currentWorldPos);
-  }
-
-  function prePosSolve(body, dt)
-  {
-    vec3.copy(body.prevWorldPos, body.currentWorldPos);
-
-    vec3.scaleAndAdd(body.currentWorldPos, body.currentWorldPos, body.currentVelocity, dt);
-
-    quat.copy(body.prevQuat, body.currentQuat);
-
-    updateWorldInertia(body);
-    const worldInertiaInv = mat3.create();
-    mat3.invert(worldInertiaInv, body.worldInertiaTensor);
-
-    const Jw = vec3.create();
-    const temp = vec3.create();
-    const gyroTerm = vec3.create();
-    vec3.transformMat3(Jw, body.currentAngleSpeed, body.worldInertiaTensor);
-    vec3.cross(temp, body.currentAngleSpeed, Jw);
-    vec3.transformMat3(gyroTerm, temp, worldInertiaInv);
-    vec3.scale(gyroTerm, gyroTerm, -dt);
-
-    vec3.add(body.currentAngleSpeed, body.currentAngleSpeed, gyroTerm);
-
-    const angleQuat = quat.fromValues(
-      0.5 * dt * body.currentAngleSpeed[0],
-      0.5 * dt * body.currentAngleSpeed[1],
-      0.5 * dt * body.currentAngleSpeed[2],
-      0);
-    const finalAddQuat = quat.create();
-    quat.multiply(finalAddQuat, angleQuat, body.currentQuat);
-
-    quat.add(body.currentQuat, body.currentQuat, finalAddQuat);
-    quat.normalize(body.currentQuat, body.currentQuat);
-  }
-
-  function solvePosConstraints(dt)
-  {
-    const worldConnectionPosBody1 = vec3.create();
-    vec3.transformMat4(worldConnectionPosBody1, body1.connectionPos, body1.currentTransformMatrix);
-    const worldConnectionPosBody2 = vec3.create();
-    vec3.transformMat4(worldConnectionPosBody2, body2.connectionPos, body2.currentTransformMatrix);
-
-    const firstBodyParams = getSpringCurrentParams(body1, worldConnectionPosBody2);
-    const secondBodyParams = getSpringCurrentParams(body2, worldConnectionPosBody1);
-    // stretch should be the same
-    const complianceScaled = spring.compliance / (dt * dt);
-    const deltaLambda = (-firstBodyParams.stretch - complianceScaled * lambda) /
-      (firstBodyParams.invEffMass + secondBodyParams.invEffMass + complianceScaled);
-    lambda += deltaLambda;
-
-    const impulse = vec3.clone(firstBodyParams.vecToSpringPosNorm);
-    vec3.scale(impulse, impulse, deltaLambda);
-
-    updatePosAndQuatFromConstraint(body1, firstBodyParams, impulse, -1);
-    updatePosAndQuatFromConstraint(body2, secondBodyParams, impulse, 1);
-  }
-
-  function updatePosAndQuatFromConstraint(body, params, impulse, sign)
-  {
-    vec3.scaleAndAdd(body.currentWorldPos, body.currentWorldPos, impulse, sign * 1.0 / body.mass);
-
-    const temp = vec3.create();
-    const rCrossP = vec3.create();
-    vec3.cross(temp, params.vecToConnectionPos, impulse);
-    vec3.transformMat3(rCrossP, temp, params.worldInertiaInv);
-
-    const angleQuat = quat.fromValues(0.5 * rCrossP[0], 0.5 * rCrossP[1], 0.5 * rCrossP[2], 0);
-    const finalAddQuat = quat.create();
-    quat.multiply(finalAddQuat, angleQuat, body.currentQuat);
-
-    if (sign < 0)
-    {
-      quat.scale(finalAddQuat, finalAddQuat, -1);
-    }
-    quat.add(body.currentQuat, body.currentQuat, finalAddQuat);
-    quat.normalize(body.currentQuat, body.currentQuat);
-  }
-
-  function postPosSolve(body, dt)
-  {
-    vec3.subtract(body.currentVelocity, body.currentWorldPos, body.prevWorldPos);
-    vec3.scale(body.currentVelocity, body.currentVelocity, 1 / dt);
-    const deltaQuat = quat.create();
-    const prevQuatInv = quat.create();
-    quat.invert(prevQuatInv, body.prevQuat);
-    quat.multiply(deltaQuat, body.currentQuat, prevQuatInv);
-
-    body.currentAngleSpeed = vec3.fromValues(deltaQuat[0], deltaQuat[1], deltaQuat[2]);
-    vec3.scale(body.currentAngleSpeed, body.currentAngleSpeed, 2 / dt);
-
-    if (deltaQuat[3] < 0)
-    {
-      vec3.scale(body.currentAngleSpeed, -1);
-    }
-  }
 
   function updateWorldInertia(body)
   {
@@ -379,7 +282,6 @@ export function createPart2_2(p)
     p.cone(1, 3);
     p.pop();
   }
-
   function drawCoordAxis(body)
   {
     p.drawingContext.disable(p.drawingContext.DEPTH_TEST);
@@ -517,8 +419,19 @@ function makeForceSpring()
   return {
     restLength : 30,
     stiffness : 0.5,
-    compliance : 0.001,
+    compliance : 1,
     dampingLin : 0.7,
     dampingAng : 0.3,
+  };
+}
+
+function makeBuddaSpring()
+{
+  return {
+    restLength : 20,
+    hzFreq : 15,
+    compliance : 0.,
+    dampingLin : 1,
+    dampingAng : 1,
   };
 }
