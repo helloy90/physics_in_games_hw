@@ -52,10 +52,6 @@ export function createPart2_2(p)
     dampingLin : 0.3,
     dampingAng : 0.3,
   };
-  let frameInfo = {
-    force : vec3.create(),
-    torque : vec3.create(),
-  };
   let lambda = 0;
   let stopSim = true;
   let subSteps = 20;
@@ -109,7 +105,7 @@ export function createPart2_2(p)
   function resetImpl()
   {
     body1 = makeBody(5.0, 60, 20, 20, vec3.fromValues(0, 0, 0), vec3.fromValues(15, 5, 5));
-    body2 = makeBody(5.0, 60, 20, 20, vec3.fromValues(0, 0, 60), vec3.fromValues(-15, 5, -5));
+    body2 = makeBody(5.0, 60, 20, 20, vec3.fromValues(0, 0, 60), vec3.fromValues(15, 5, -5));
     lambda = 0;
     spring = makeForceSpring();
 
@@ -304,9 +300,6 @@ export function createPart2_2(p)
 
     drawSpring(worldConnectionPosBody1, worldConnectionPosBody2);
 
-    drawForces(worldConnectionPosBody1);
-    drawForces(worldConnectionPosBody2);
-
     drawCoordAxis();
   }
 
@@ -342,18 +335,6 @@ export function createPart2_2(p)
     p.pop();
 
     p.drawingContext.disable(p.drawingContext.DEPTH_TEST);
-  }
-
-  function drawForces(pos)
-  {
-    const shiftedForce = vec3.clone(frameInfo.force);
-    const shiftedTorque = vec3.clone(frameInfo.torque);
-
-    vec3.add(shiftedForce, shiftedForce, pos);
-    vec3.add(shiftedTorque, shiftedTorque, pos);
-
-    drawArrow(255, 0, 0, ...pos, ...shiftedForce);
-    drawArrow(0, 0, 255, ...pos, ...shiftedTorque);
   }
 
   function drawArrow(colorR, colorG, colorB, fromVecX, fromVecY, fromVecZ, toVecX, toVecY, toVecZ)
@@ -418,7 +399,7 @@ export function createPart2_2(p)
     p.textAlign(p.LEFT, p.TOP);
     p.text("Part 2.2: Two rigid bodies", 32, 30);
     p.text(`Mode: ${sim_modes[currentMode].label}`, 32, 56);
-    p.text("Press M to switch mode, R to reset. T to stop/continue simulation", 32, 82);
+    p.text("Press R to reset. T to stop/continue simulation", 32, 82);
     p.text(
       `Body1 position x:${body1.currentWorldPos[0].toFixed(4)}, y:${
         body1.currentWorldPos[1].toFixed(4)}, z:${body1.currentWorldPos[2].toFixed(4)}`,
@@ -429,29 +410,6 @@ export function createPart2_2(p)
         body2.currentWorldPos[1].toFixed(4)}, z:${body2.currentWorldPos[2].toFixed(4)}`,
       32,
       168);
-    // if (currentMode == 0)
-    // {
-    //   p.text(
-    //     `Current World Position x:${body.currentWorldPos[0].toFixed(4)}, y:${
-    //       body.currentWorldPos[1].toFixed(4)}, z:${body.currentWorldPos[2].toFixed(4)}`,
-    //     32,
-    //     168);
-    //   p.text(
-    //     `Current Force (F) x:${frameInfo.force[0].toFixed(4)}, y:${
-    //       frameInfo.force[1].toFixed(4)}, z:${frameInfo.force[2].toFixed(4)}`,
-    //     32,
-    //     192);
-    //   p.text(
-    //     `Current Torque (T) x:${frameInfo.torque[0].toFixed(4)}, y:${
-    //       frameInfo.torque[1].toFixed(4)}, z:${frameInfo.torque[2].toFixed(4)}`,
-    //     32,
-    //     216);
-
-    p.fill(250, 50, 50);
-    p.text(`Red arrow - Current Force`, 32, 270);
-    p.fill(50, 150, 250);
-    p.text(`Blue Arrow - Current Torque`, 32, 290);
-    // }
     p.pop();
   }
 }
