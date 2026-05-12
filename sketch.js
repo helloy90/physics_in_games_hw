@@ -73,6 +73,8 @@ new p5((p) => {
       task.setPart("part2.1");
     if (p.key === "3")
       task.setPart("part2.2");
+    if (p.key === "4")
+      task.setPart("part2.3");
     task.keyPressed(p.key);
   };
 

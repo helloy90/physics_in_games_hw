@@ -223,16 +223,6 @@ export function createPart2_1(p)
     const vecToSpringPos = vec3.create();
     vec3.subtract(vecToSpringPos, spring.worldPos, worldConnectionPos);
 
-    const invTransform = mat4.create();
-    mat4.invert(invTransform, body.currentTransformMatrix);
-    const localSpringPos = vec3.create();
-    vec3.transformMat4(localSpringPos, spring.worldPos, invTransform);
-    const localVecToSpringPos = vec3.create();
-    vec3.subtract(localVecToSpringPos, localSpringPos, body.connectionPos);
-    const localVecToSpringPosNorm = vec3.create();
-
-    vec3.normalize(localVecToSpringPosNorm, localVecToSpringPos);
-
     const vecLength = vec3.length(vecToSpringPos);
     const stretch = vecLength - spring.restLength;
 
@@ -254,14 +244,12 @@ export function createPart2_1(p)
     return {
       vecToConnectionPos : vecToConnectionPos,
       vecToSpringPosNorm : vecToSpringPosNorm,
-      localVecToSpringPosNorm : localVecToSpringPosNorm,
       rCrossN : rCrossN,
       connectionPointVelocity : connectionPointVelocity,
       stretch : stretch,
       invEffMass : invEffMass,
       invRotMass : invRotMass,
       worldInertiaInv : worldInertiaInv,
-      invTransform : invTransform,
     };
   }
 
