@@ -136,15 +136,13 @@ export function createPart2_1(p)
     const torque = vec3.create();
     vec3.cross(torque, params.vecToConnectionPos, force);
 
-    // vec3.transformMat4(torque, torque, params.invTransform);
-
     vec3.copy(frameInfo.force, force);
     vec3.copy(frameInfo.torque, torque);
 
-    vec3.scale(force, force, params.invEffMass * dt);
+    vec3.scale(force, force, body.invMass * dt);
     vec3.add(body.nextVelocity, body.currentVelocity, force);
 
-    vec3.scale(torque, torque, dt);
+    vec3.scale(torque, torque, params.invRotMass * dt);
     vec3.add(body.currentAngularMomentum, body.currentAngularMomentum, torque);
     vec3.transformMat3(body.nextAngleSpeed, body.currentAngularMomentum, params.worldInertiaInv);
   }
@@ -154,32 +152,51 @@ export function createPart2_1(p)
     const params = getSpringCurrentParams();
 
     const effMass = 1.0 / params.invEffMass;
-    const Jv = -vec3.dot(params.vecToSpringPosNorm, params.connectionPointVelocity);
+    const Jv = -vec3.dot(params.vecToSpringPosNorm, body.currentVelocity) -
+      vec3.dot(params.rCrossN, body.currentAngleSpeed);
+    // const Jw = -vec3.dot(params.rCrossN, body.currentAngleSpeed);
 
-    const omega = 2.0 * Math.PI * spring.hzFreq;
-    const k = effMass * omega * omega;
-    const c = 2.0 * effMass * spring.damping * omega;
-    const denom = c + dt * k;
-    const beta = (dt * k) / denom;
-    const gamma = 1.0 / denom;
+    // const omega = 2.0 * Math.PI * spring.hzFreq;
+    // const k = effMass * omega * omega;
+    // const c = 2.0 * effMass * spring.damping * omega;
+    // const denom = c + dt * k;
+    // const beta = (dt * k) / denom;
+    // const gamma = 1.0 / denom;
 
-    const lambda = -(Jv + (beta * params.stretch) / dt) / (params.invEffMass + gamma);
+    const lambda = getLambda(effMass, params.stretch, Jv, dt);
+    // const angleLambda = getLambda(1.0 / params.invRotMass, params.stretch, Jw, dt);
 
     const force = vec3.clone(params.vecToSpringPosNorm);
     vec3.scale(force, force, -lambda);
     const torque = vec3.clone(params.rCrossN);
-    vec3.transformMat3(torque, torque, params.worldInertiaInv);
     vec3.scale(torque, torque, -lambda);
+    // vec3.scale(torque, torque, -lambda);
 
     vec3.copy(frameInfo.force, force);
     vec3.copy(frameInfo.torque, torque);
     frameInfo.correction = lambda;
 
-    vec3.scale(force, force, params.invEffMass * dt);
+    vec3.scale(force, force, body.invMass * dt);
     vec3.add(body.nextVelocity, body.currentVelocity, force);
 
+    vec3.transformMat3(torque, torque, params.worldInertiaInv);
     vec3.scale(torque, torque, dt);
+    // vec3.add(body.currentAngularMomentum, body.currentAngularMomentum, torque);
     vec3.add(body.nextAngleSpeed, body.currentAngleSpeed, torque);
+  }
+
+  function getLambda(mass, stretch, Jv, dt)
+  {
+    const omega = 2.0 * Math.PI * spring.hzFreq;
+    const k = mass * omega * omega;
+    const c = 2.0 * mass * spring.damping * omega;
+    const denom = c + dt * k;
+    const beta = (dt * k) / denom;
+    const gamma = 1.0 / denom;
+
+    const lambda = -(Jv + (beta * stretch) / dt) / (gamma);
+
+    return lambda;
   }
 
   function getSpringCurrentParams()
@@ -231,7 +248,8 @@ export function createPart2_1(p)
 
     const tempVec = vec3.create();
     vec3.transformMat3(tempVec, rCrossN, worldInertiaInv);
-    const invEffMass = body.invMass + vec3.dot(rCrossN, tempVec);
+    const invRotMass = vec3.dot(rCrossN, tempVec);
+    const invEffMass = body.invMass + invRotMass;
 
     return {
       vecToConnectionPos : vecToConnectionPos,
@@ -241,6 +259,7 @@ export function createPart2_1(p)
       connectionPointVelocity : connectionPointVelocity,
       stretch : stretch,
       invEffMass : invEffMass,
+      invRotMass : invRotMass,
       worldInertiaInv : worldInertiaInv,
       invTransform : invTransform,
     };
@@ -475,7 +494,7 @@ function makeBuddaSpring()
   return {
     worldPos : vec3.fromValues(0, 0, 80),
     restLength : 20,
-    hzFreq : 0.5,
-    damping : 2,
+    hzFreq : 0.1,
+    damping : 0.5,
   };
 }

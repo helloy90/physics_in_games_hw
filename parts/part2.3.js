@@ -17,16 +17,18 @@ export function createPart2_3(p)
     width : 0,
     height : 0,
     depth : 0,
-    prevWorldPos : vec3.create(),
     currentWorldPos : vec3.create(),
+    nextWorldPos : vec3.create(),
     currentVelocity : vec3.create(),
+    nextVelocity : vec3.create(),
     connectionPos : vec3.create(),
     localInertiaTensor : mat3.create(),
     worldInertiaTensor : mat3.create(),
     currentAngularMomentum : vec3.create(),
-    prevQuat : quat.create(),
     currentQuat : quat.create(),
+    nextQuat : quat.create(),
     currentAngleSpeed : vec3.create(),
+    newtAngleSpeed : vec3.create(),
     currentTransformMatrix : mat4.create(),
   };
   let body2 = {
@@ -35,16 +37,18 @@ export function createPart2_3(p)
     width : 0,
     height : 0,
     depth : 0,
-    prevWorldPos : vec3.create(),
     currentWorldPos : vec3.create(),
+    nextWorldPos : vec3.create(),
     currentVelocity : vec3.create(),
+    nextVelocity : vec3.create(),
     connectionPos : vec3.create(),
     localInertiaTensor : mat3.create(),
     worldInertiaTensor : mat3.create(),
     currentAngularMomentum : vec3.create(),
-    prevQuat : quat.create(),
     currentQuat : quat.create(),
+    nextQuat : quat.create(),
     currentAngleSpeed : vec3.create(),
+    newtAngleSpeed : vec3.create(),
     currentTransformMatrix : mat4.create(),
   };
   let spring = {
@@ -64,53 +68,33 @@ export function createPart2_3(p)
   let currentMode = 0;
 
   return {
-    init() {
-      body1 = makeBody(5.0, 60, 20, 20, vec3.fromValues(0, 0, 0), vec3.fromValues(15, 5, 5));
-      body2 = makeBody(5.0, 60, 20, 20, vec3.fromValues(0, 0, 60), vec3.fromValues(15, 5, -5));
-      lambda = 0;
-      if (currentMode === 0)
-      {
-        spring = makeForceSpring();
-      }
-      else
-      {
-        spring = makeBuddaSpring()
-      }
+    init() { resetImpl(); },
 
-      p.camera(150, 75, 150, 0, 0, 0, 0, -1, 0);
-    },
-
-    reset() {
-      body1 = makeBody(5.0, 60, 20, 20, vec3.fromValues(0, 0, 0), vec3.fromValues(15, 5, 5));
-      body2 = makeBody(5.0, 60, 20, 20, vec3.fromValues(0, 0, 60), vec3.fromValues(15, 5, -5));
-      lambda = 0;
-      if (currentMode === 0)
-      {
-        spring = makeForceSpring();
-      }
-      else
-      {
-        spring = makeBuddaSpring()
-      }
-
-      p.camera(150, 75, 150, 0, 0, 0, 0, -1, 0);
-    },
+    reset() { resetImpl(); },
 
     update(dt) {
       if (stopSim)
       {
         return;
       }
+
+      preSolve(body1);
+      preSolve(body2);
+
+      let params;
       switch (currentMode)
       {
       case 0:
+        // params = ;
         break;
       case 1:
         break;
       case 2:
         break;
-
       }
+
+      postSolve(body1, params.force, params.torque, dt);
+      postSolve(body2, params.force, params.torque, dt);
     },
 
     render() { drawTask(); },
@@ -134,6 +118,26 @@ export function createPart2_3(p)
     },
   };
 
+  function resetImpl()
+  {
+    body1 = makeBody(5.0, 60, 20, 20, vec3.fromValues(0, 0, 0), vec3.fromValues(15, 5, 5));
+    body2 = makeBody(5.0, 60, 20, 20, vec3.fromValues(0, 0, 60), vec3.fromValues(-15, 5, -5));
+    lambda = 0;
+    spring = makeForceSpring();
+
+    p.camera(150, 75, 150, 0, 0, 0, 0, -1, 0);
+  }
+
+  function preSolve(body)
+  {
+    vec3.copy(body.currentWorldPos, body.nextWorldPos);
+    vec3.copy(body.currentVelocity, body.nextVelocity);
+    vec3.copy(body.currentAngleSpeed, body.nextAngleSpeed);
+    vec3.copy(body.currentQuat, body.nextQuat);
+
+    updateWorldInertia(body);
+  }
+
   function updateWorldInertia(body)
   {
     const rotMatrix = mat3.create();
@@ -145,6 +149,65 @@ export function createPart2_3(p)
 
     mat3.multiply(temp, body.localInertiaTensor, rotMatrixTransposed);
     mat3.multiply(body.worldInertiaTensor, rotMatrix, temp);
+  }
+
+  function postSolve(body, force, torque, dt)
+  {
+    vec3.scale(force, force, params.invEffMass * dt);
+    vec3.add(body.nextVelocity, body.currentVelocity, force);
+
+    vec3.scale(torque, torque, dt);
+    vec3.add(body.currentAngularMomentum, body.currentAngularMomentum, torque);
+    vec3.transformMat3(body.nextAngleSpeed, body.currentAngularMomentum, params.worldInertiaInv);
+    vec3.add(body.nextAngleSpeed, body.nextAngleSpeed, getGyroTerm(body, dt));
+
+    vec3.add(
+      body.nextWorldPos, body.currentWorldPos, vec3.scale(vec3.create(), body.nextVelocity, dt));
+
+    const finalAddQuat = quat.create();
+    const angleQuat = quat.fromValues(
+      0.5 * dt * body.nextAngleSpeed[0],
+      0.5 * dt * body.nextAngleSpeed[1],
+      0.5 * dt * body.nextAngleSpeed[2],
+      0);
+    quat.multiply(finalAddQuat, angleQuat, body.currentQuat);
+
+    quat.add(body.nextQuat, body.currentQuat, finalAddQuat);
+    quat.normalize(body.nextQuat, body.nextQuat);
+
+    mat4.fromRotationTranslation(body.currentTransformMatrix, body.nextQuat, body.nextWorldPos);
+  }
+
+  function getGyroTerm(body, dt)
+  {
+    const Jw = vec3.create();
+    const gyroTerm = vec3.create();
+
+    const worldInertiaInv = mat3.create();
+    mat3.invert(worldInertiaInv, body.worldInertiaTensor);
+
+    vec3.transformMat3(Jw, body.currentAngleSpeed, worldInertiaInv);
+    vec3.cross(gyroTerm, Jw, body.currentAngleSpeed);
+    vec3.scale(gyroTerm, gyroTerm, dt);
+
+    const skewedOmega = skew(body.currentAngleSpeed);
+    const skewedJw = skew(Jw);
+
+    const skewedOmegaTimesJ = mat3.create();
+    mat3.multiply(skewedOmegaTimesJ, skewedOmega, body.worldInertiaTensor);
+
+    const yakobi = mat3.create();
+    mat3.subtract(yakobi, skewedOmegaTimesJ, skewedJw);
+    mat3.multiplyScalar(yakobi, yakobi, dt);
+    mat3.add(yakobi, yakobi, body.worldInertiaTensor);
+
+    const yakobiInv = mat3.create();
+    mat3.invert(yakobiInv, yakobi);
+
+    const angleCorrection = vec3.create();
+    vec3.transformMat3(angleCorrection, gyroTerm, yakobiInv);
+
+    return angleCorrection;
   }
 
   function getSpringCurrentParams(body, otherConPos)
@@ -185,6 +248,114 @@ export function createPart2_3(p)
       vecToConnectionPos : vecToConnectionPos,
       vecToSpringPosNorm : vecToSpringPosNorm,
     };
+  }
+
+  function getFromBaumgarte(dt)
+  {
+    const worldConnectionPosBody1 = vec3.create();
+    vec3.transformMat4(worldConnectionPosBody1, body1.connectionPos, body1.currentTransformMatrix);
+    const worldConnectionPosBody2 = vec3.create();
+    vec3.transformMat4(worldConnectionPosBody2, body2.connectionPos, body2.currentTransformMatrix);
+
+    const firstBodyParams = getSpringCurrentParams(body1, worldConnectionPosBody2);
+    const secondBodyParams = getSpringCurrentParams(body2, worldConnectionPosBody1);
+
+    const params = getSpringCurrentParams();
+
+    const effMass = 1.0 / params.invEffMass;
+    const Jv = -vec3.dot(params.vecToSpringPosNorm, params.connectionPointVelocity);
+
+    const omega = 2.0 * Math.PI * spring.hzFreq;
+    const k = effMass * omega * omega;
+    const c = 2.0 * effMass * spring.damping * omega;
+    const denom = c + dt * k;
+    const beta = (dt * k) / denom;
+    const gamma = 1.0 / denom;
+
+    const lambda = -(Jv + (beta * params.stretch) / dt) / (params.invEffMass + gamma);
+
+
+    // const force = vec3.clone(params.vecToSpringPosNorm);
+    // vec3.scale(force, force, -lambda);
+    // const torque = vec3.clone(params.rCrossN);
+    // vec3.transformMat3(torque, torque, params.worldInertiaInv);
+    // vec3.scale(torque, torque, -lambda);
+
+    // vec3.copy(frameInfo.force, force);
+    // vec3.copy(frameInfo.torque, torque);
+    // frameInfo.correction = lambda;
+
+    // vec3.scale(force, force, params.invEffMass * dt);
+    // vec3.add(body.nextVelocity, body.currentVelocity, force);
+
+    // vec3.scale(torque, torque, dt);
+    // vec3.add(body.nextAngleSpeed, body.currentAngleSpeed, torque);
+  }
+
+  function getFromNGS(dt)
+  {
+    const params = getSpringCurrentParams();
+
+    const effMass = 1.0 / params.invEffMass;
+    const Jv = -vec3.dot(params.vecToSpringPosNorm, params.connectionPointVelocity);
+
+    const omega = 2.0 * Math.PI * spring.hzFreq;
+    const k = effMass * omega * omega;
+    const c = 2.0 * effMass * spring.damping * omega;
+    const denom = c + dt * k;
+    const beta = (dt * k) / denom;
+    const gamma = 1.0 / denom;
+
+    const lambda = -(Jv + (beta * params.stretch) / dt) / (params.invEffMass + gamma);
+
+    const force = vec3.clone(params.vecToSpringPosNorm);
+    vec3.scale(force, force, -lambda);
+    const torque = vec3.clone(params.rCrossN);
+    vec3.transformMat3(torque, torque, params.worldInertiaInv);
+    vec3.scale(torque, torque, -lambda);
+
+    vec3.copy(frameInfo.force, force);
+    vec3.copy(frameInfo.torque, torque);
+    frameInfo.correction = lambda;
+
+    vec3.scale(force, force, params.invEffMass * dt);
+    vec3.add(body.nextVelocity, body.currentVelocity, force);
+
+    vec3.scale(torque, torque, dt);
+    vec3.add(body.nextAngleSpeed, body.currentAngleSpeed, torque);
+  }
+
+  function getFromBudda(dt)
+  {
+    const params = getSpringCurrentParams();
+
+    const effMass = 1.0 / params.invEffMass;
+    const Jv = -vec3.dot(params.vecToSpringPosNorm, params.connectionPointVelocity);
+
+    const omega = 2.0 * Math.PI * spring.hzFreq;
+    const k = effMass * omega * omega;
+    const c = 2.0 * effMass * spring.damping * omega;
+    const denom = c + dt * k;
+    const beta = (dt * k) / denom;
+    const gamma = 1.0 / denom;
+
+    const lambda = -(Jv + (beta * params.stretch) / dt) / (params.invEffMass + gamma);
+
+    const force = vec3.clone(params.vecToSpringPosNorm);
+    vec3.scale(force, force, -lambda);
+    const torque = vec3.clone(params.rCrossN);
+    vec3.transformMat3(torque, torque, params.worldInertiaInv);
+    vec3.scale(torque, torque, -lambda);
+
+    vec3.copy(frameInfo.force, force);
+    vec3.copy(frameInfo.torque, torque);
+    frameInfo.correction = lambda;
+
+    vec3.scale(force, force, params.invEffMass * dt);
+    vec3.add(body.nextVelocity, body.currentVelocity, force);
+
+    vec3.scale(torque, torque, dt);
+    vec3.add(body.nextAngleSpeed, body.currentAngleSpeed, torque);
   }
 
   function drawTask()
@@ -400,16 +571,18 @@ function makeBody(mass, width, height, depth, worldPos, conPos)
     width : width,
     height : height,
     depth : depth,
-    prevWorldPos : worldPos,
-    currentWorldPos : vec3.clone(worldPos),
+    currentWorldPos : worldPos,
+    nextWorldPos : vec3.clone(worldPos),
     currentVelocity : vec3.fromValues(0, 0, 0),
+    nextVelocity : vec3.fromValues(0, 0, 0),
     connectionPos : conPos,
     localInertiaTensor : inertia,
     worldInertiaTensor : worldInertia,
     currentAngularMomentum : initialAngularMomentum,
-    prevQuat : initialQuat,
-    currentQuat : nextQuat,
+    currentQuat : initialQuat,
+    nextQuat : nextQuat,
     currentAngleSpeed : currentAngleSpeed,
+    newtAngleSpeed : vec3.clone(currentAngleSpeed),
     currentTransformMatrix : transform,
   };
 }
