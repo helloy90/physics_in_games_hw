@@ -57,6 +57,7 @@ export function createPart2_1(p)
       }
 
       p.camera(150, 75, 150, 0, 0, 0, 0, -1, 0);
+      p.perspective();
     },
 
     reset() {
@@ -72,6 +73,7 @@ export function createPart2_1(p)
       }
 
       p.camera(150, 75, 150, 0, 0, 0, 0, -1, 0);
+      p.perspective();
     },
 
     update(dt) {

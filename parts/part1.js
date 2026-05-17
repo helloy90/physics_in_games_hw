@@ -58,6 +58,7 @@ export function createPart1(p)
       renderParams = body.renderParams;
       physicsParams = body.physicsParams;
       p.camera(100, 50, 100, 0, 0, 0, 0, -1, 0);
+      p.perspective();
     },
 
     reset() {
@@ -65,6 +66,7 @@ export function createPart1(p)
       renderParams = body.renderParams;
       physicsParams = body.physicsParams;
       p.camera(100, 50, 100, 0, 0, 0, 0, -1, 0);
+      p.perspective();
     },
 
     update(dt) {

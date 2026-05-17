@@ -169,6 +169,7 @@ export function createPart2_3(p)
     spring = makeSpring();
 
     p.camera(150, 75, 150, 0, 0, 0, 0, -1, 0);
+    p.perspective();
   }
 
   function preSolve(body)

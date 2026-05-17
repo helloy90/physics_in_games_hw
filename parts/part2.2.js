@@ -110,6 +110,7 @@ export function createPart2_2(p)
     spring = makeForceSpring();
 
     p.camera(150, 75, 150, 0, 0, 0, 0, -1, 0);
+    p.perspective();
   }
 
   function xpbdStep(dt)

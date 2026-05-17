@@ -27,17 +27,23 @@ function skew(vec)
 export function createPart3_3(p)
 {
   let bodies = [];
+  let planes = [];
   let contacts = [];
+  let planeContacts = [];
+
+  let planePositions = [];
+
+  let boxSize = 70;
 
   const baumgarteBetta = 0.3;
 
   const extAcceleration = vec3.fromValues(0, -20, 0);
-  const maxDeltaLambda = 99999999;
+  const maxDeltaLambda = 0.005;
 
   let stopSim = true;
   let subSteps = 10;
   let currentMode = 0;
-  let renderEnclosure = false;
+  let renderEnclosure = true;
 
   let gridCellSize = 0;
 
@@ -81,98 +87,83 @@ export function createPart3_3(p)
   {
     bodies = [];
     contacts = [];
+    planeContacts = [];
+    planePositions = [];
 
-    let encThickness = 250;
-    let encSize = 1200 - encThickness / 2;
-
+    let encThickness = 0;
+    let encSize = boxSize - encThickness / 2;
     {
+      planePositions =
+        [ 2, encSize / 2, encSize / 2, encSize / 2, encSize / 2, -2 + encSize - encThickness ];
+
       let enclosure =
         [
-          {pos : vec3.fromValues(0, -30 - encThickness / 2, 0), rot : quat.create()},
           {
-            pos :
-              vec3.fromValues(encSize / 2 - encThickness / 2, -30 + encSize / 2 - encThickness, 0),
+            pos : vec3.fromValues(0, -planePositions[0] - encThickness / 2, 0),
             rot : quat.create(),
           },
           {
-            pos :
-              vec3.fromValues(0, -30 + encSize / 2 - encThickness, encSize / 2 - encThickness / 2),
+            pos : vec3.fromValues(
+              planePositions[1] - encThickness / 2, -2 + encSize / 2 - encThickness, 0),
             rot : quat.create(),
           },
           {
-            pos :
-              vec3.fromValues(-encSize / 2 + encThickness / 2, -30 + encSize / 2 - encThickness, 0),
+            pos : vec3.fromValues(
+              0, -2 + encSize / 2 - encThickness, planePositions[2] - encThickness / 2),
             rot : quat.create(),
           },
           {
-            pos :
-              vec3.fromValues(0, -30 + encSize / 2 - encThickness, -encSize / 2 + encThickness / 2),
+            pos : vec3.fromValues(
+              -planePositions[3] + encThickness / 2, -2 + encSize / 2 - encThickness, 0),
             rot : quat.create(),
           },
-          {pos : vec3.fromValues(0, -30 + encSize - 1.5 * encThickness, 0), rot : quat.create()},
+          {
+            pos : vec3.fromValues(
+              0, -2 + encSize / 2 - encThickness, -planePositions[4] + encThickness / 2),
+            rot : quat.create(),
+          },
+          {
+            pos : vec3.fromValues(0, planePositions[5] - 0.5 * encThickness, 0),
+            rot : quat.create(),
+          },
         ]
 
         let angles = [
           vec3.fromValues(0, 0, 0),
           vec3.fromValues(0, 0, 90),
+          vec3.fromValues(-90, 0, 0),
+          vec3.fromValues(0, 0, -90),
           vec3.fromValues(90, 0, 0),
-          vec3.fromValues(0, 0, 90),
-          vec3.fromValues(90, 0, 0),
-          vec3.fromValues(0, 0, 0),
+          vec3.fromValues(0, 0, 180),
         ];
 
       for (let i = 0; i < enclosure.length; i++)
       {
         quat.fromEuler(enclosure[i].rot, angles[i][0], angles[i][1], angles[i][2]);
-        bodies.push(
-          makeBody(0, encSize, encThickness, encSize, enclosure[i].pos, enclosure[i].rot, true));
+        planes.push(
+          makeBody(1, encSize, encThickness, encSize, enclosure[i].pos, enclosure[i].rot, true));
       }
     }
 
-    // bodies
-    let positions = [
-      vec3.fromValues(0, 0, 0),
-      vec3.fromValues(0, 0, 40),
-      vec3.fromValues(0, 30, -3),
-      vec3.fromValues(-3, 60, 0),
-      vec3.fromValues(10, 30, 30),
-      vec3.fromValues(12, 60, 30),
-      vec3.fromValues(-20, 90, 60),
-      vec3.fromValues(20, 60, 60),
-      vec3.fromValues(30, 90, 60),
-      vec3.fromValues(0, 120, 5),
-    ];
-
-    let rotations = [
-      quat.create(),
-      quat.create(),
-      quat.create(),
-      quat.create(),
-      quat.create(),
-      quat.create(),
-      quat.create(),
-      quat.create(),
-      quat.create(),
-      quat.create(),
-    ];
-
-    quat.fromEuler(rotations[0], 0, 0, 0);
-    quat.fromEuler(rotations[1], 0, 0, 0);
-    quat.fromEuler(rotations[2], 0, 30, 0);
-    quat.fromEuler(rotations[3], 0, 60, 0);
-    quat.fromEuler(rotations[4], 0, 30, 0);
-    quat.fromEuler(rotations[5], 0, 60, 0);
-    quat.fromEuler(rotations[6], 0, 90, 0);
-    quat.fromEuler(rotations[7], 0, 60, 0);
-    quat.fromEuler(rotations[8], 0, 30, 0);
-    quat.fromEuler(rotations[9], 0, 120, 0);
-
-    for (let i = 0; i < positions.length; i++)
+    const mult = 2;
+    const loop = Math.floor(Math.sqrt(400) / 2);
+    const heights = [ 0, 2 ];
+    for (const height of heights)
     {
-      bodies.push(makeBody(5, 30, 20, 20, positions[i], rotations[i], false));
+      for (let i = -loop; i < loop; i++)
+      {
+        for (let j = -loop; j < loop; j++)
+        {
+          const currentPos = vec3.fromValues(i * mult, height, j * mult);
+          const randShift = vec3.create();
+          vec3.random(randShift, 0.01);
+          vec3.add(currentPos, currentPos, randShift);
+
+          bodies.push(makeBody(1, 1, 1, 1, currentPos, quat.create(), false));
+        }
+      }
     }
 
-    // ---------- Вычисляем размер ячейки сетки ----------
     let maxHalfExtent = 0;
     for (const body of bodies)
     {
@@ -181,12 +172,11 @@ export function createPart3_3(p)
       const hd = body.depth / 2;
       maxHalfExtent = Math.max(maxHalfExtent, hw, hh, hd);
     }
-    // Удвоенная максимальная полуось – гарантирует, что тела в ячейках,
-    // разность индексов которых ≥2 по любой оси, не пересекаются.
-    gridCellSize = maxHalfExtent * 2;
-    // -------------------------------------------------
 
-    p.camera(300, 150, 300, 0, 0, 0, 0, -1, 0);
+    gridCellSize = maxHalfExtent * 16;
+
+    p.camera(25, 12.5, 25, 0, 0, 0, 0, -1, 0);
+    p.perspective(2 * Math.atan(p.height / 2 / 800), p.width / p.height, 0.1, 10000);
   }
 
   function seqImpulseStep(dt)
@@ -215,58 +205,17 @@ export function createPart3_3(p)
   function collectContacts()
   {
     const currentContacts = [];
-    const grid = buildSpatialGrid();
-
-    const candidatePairs = new Set();
-    for (const [, bodyIndices] of grid)
-    {
-      const n = bodyIndices.length;
-      for (let a = 0; a < n; a++)
-      {
-        for (let b = a + 1; b < n; b++)
-        {
-          let i = bodyIndices[a];
-          let j = bodyIndices[b];
-          if (i > j)
-            [i, j] = [ j, i ];
-          candidatePairs.add(`${i},${j}`);
-        }
-      }
-    }
-
-    for (const pairKey of candidatePairs)
-    {
-      const [iStr, jStr] = pairKey.split(',');
-      const i = parseInt(iStr);
-      const j = parseInt(jStr);
-      const bodyA = bodies[i];
-      const bodyB = bodies[j];
-
-      if (bodyA.isStatic && bodyB.isStatic)
-        continue;
-
-      const obbContacts = satContacts(bodyA, bodyB);
-      for (const c of obbContacts)
-      {
-        currentContacts.push(c);
-      }
-    }
-
-    return currentContacts;
-  }
-
-  function buildSpatialGrid()
-  {
     const grid = new Map();
 
-    for (const body of bodies)
+    for (let i = 0; i < bodies.length; i++)
     {
+      const body = bodies[i];
       const pos = body.currentWorldPos;
-
-      const hw = body.width / 2;
-      const hh = body.height / 2;
-      const hd = body.depth / 2;
-      const radius = Math.sqrt(hw * hw + hh * hh + hd * hd);
+      if (Math.abs(pos[0]) > 100 || Math.abs(pos[1]) > 100 || Math.abs(pos[2]) > 100)
+      {
+        continue;
+      }
+      const radius = body.boundRadius;
 
       const minCellX = Math.floor((pos[0] - radius) / gridCellSize);
       const maxCellX = Math.floor((pos[0] + radius) / gridCellSize);
@@ -281,17 +230,100 @@ export function createPart3_3(p)
         {
           for (let iz = minCellZ; iz <= maxCellZ; iz++)
           {
-            const key = `${ix},${iy},${iz}`;
-            if (!grid.has(key))
+            const key = hash(ix, iy, iz);
+            let arr = grid.get(key);
+            if (!arr)
             {
-              grid.set(key, []);
+              arr = [];
+              grid.set(key, arr);
             }
-            grid.get(key).push(i);
+            if (arr.length <= 4_294_967_294)
+            {
+              arr.push(i);
+            }
+            else
+            {
+              p.print(`array size exceeded! for grid x:${ix}. y:${iy}, z:${iz}`);
+            }
           }
         }
       }
     }
-    return grid;
+
+    const seen = new Set();
+    for (const arr of grid.values())
+    {
+      const n = arr.length;
+
+      if (n < 2)
+      {
+        continue;
+      }
+      for (let a = 0; a < n; a++)
+      {
+        for (let b = a + 1; b < n; b++)
+        {
+          const i = arr[a];
+          const j = arr[b];
+
+          if (i === j)
+          {
+            continue;
+          }
+
+          const le = Math.min(i, j);
+          const gt = Math.max(i, j);
+
+          const setKey = le * 999983 + gt;
+          if (seen.has(setKey))
+          {
+            continue;
+          }
+
+          seen.add(setKey);
+
+          const bodyA = bodies[le];
+          const bodyB = bodies[gt];
+
+          if (bodyA.isStatic && bodyB.isStatic)
+            continue;
+
+          const dist = vec3.distance(bodyA.currentWorldPos, bodyB.currentWorldPos);
+          if (dist > bodyA.boundRadius && dist > bodyB.boundRadius)
+          {
+            continue;
+          }
+
+          const obbContacts = satContacts(bodyA, bodyB);
+          for (const c of obbContacts)
+          {
+            currentContacts.push(c);
+          }
+        }
+      }
+    }
+
+    for (const body of bodies)
+    {
+      for (let i = 0; i < planes.length; i++)
+      {
+        const plane = planes[i];
+        const planePos = planePositions[i];
+        const planeCont = planeOBBContacts(body, plane, planePos);
+        for (const cont of planeCont)
+        {
+          currentContacts.push(cont);
+        }
+      }
+    }
+
+    return currentContacts;
+  }
+
+  function hash(i, j, k)
+  {
+    const cantor = (a, b) => { return (a + b + 1) * (a + b) / 2 + b; };
+    return cantor(i, cantor(j, k));
   }
 
   function satContacts(bodyA, bodyB)
@@ -444,6 +476,38 @@ export function createPart3_3(p)
         penetration : minOverlap,
         lambda : 0,
       });
+    }
+
+    return currentContacts;
+  }
+
+  function planeOBBContacts(body, plane, planePos)
+  {
+    const currentContacts = [];
+    const verts = getWorldVertices(body);
+    const planeAxes = getBoxAxis(plane);
+    const planeNormal = planeAxes[1];
+
+    for (const vert of verts)
+    {
+      const dist = vec3.dot(vert, planeNormal) + planePos;
+
+      const planeContact = vec3.create();
+      vec3.scaleAndAdd(planeContact, vert, planeNormal, -dist);
+      if (dist < 0)
+      {
+
+        currentContacts.push({
+          firstBody : body,
+          firstContact : vert,
+          firstMoveDir : vec3.clone(planeNormal),
+          secondBody : plane,
+          secondContact : planeContact,
+          secondMoveDir : vec3.clone(planeNormal),
+          penetration : -dist,
+          lambda : 0,
+        })
+      }
     }
 
     return currentContacts;
@@ -676,12 +740,35 @@ export function createPart3_3(p)
       }
       else
       {
+        p.strokeWeight(0.1);
         p.ambientMaterial(65, 130, 255);
       }
       p.box(body.width, body.height, body.depth);
       p.pop();
 
-      drawCoordAxis(body);
+      // drawCoordAxis(body);
+    }
+
+    for (const plane of planes)
+    {
+      if (plane.isStatic === true && renderEnclosure !== true)
+      {
+        continue;
+      }
+      p.push();
+      p.applyMatrix([...plane.currentTransformMatrix ]);
+      if (plane.isStatic === true)
+      {
+        p.ambientMaterial(90, 90, 90);
+      }
+      else
+      {
+        p.ambientMaterial(65, 130, 255);
+      }
+      p.box(plane.width, plane.height, plane.depth);
+      p.pop();
+
+      // drawCoordAxis(plane);
     }
   }
   function drawArrow(colorR, colorG, colorB, fromVecX, fromVecY, fromVecZ, toVecX, toVecY, toVecZ)
@@ -715,11 +802,11 @@ export function createPart3_3(p)
     p.applyMatrix([...body.currentTransformMatrix ]);
     p.strokeWeight(2);
     p.stroke(255, 50, 50, 100);
-    p.line(0, 0, 0, 25, 0, 0);
+    p.line(0, 0, 0, 1, 0, 0);
     p.stroke(50, 255, 50, 100);
-    p.line(0, 0, 0, 0, 25, 0);
+    p.line(0, 0, 0, 0, 1, 0);
     p.stroke(50, 50, 255, 100);
-    p.line(0, 0, 0, 0, 0, 25);
+    p.line(0, 0, 0, 0, 0, 1);
     p.pop();
     p.drawingContext.enable(p.drawingContext.DEPTH_TEST);
   }
@@ -735,9 +822,10 @@ export function createPart3_3(p)
     p.fill(229, 231, 235);
     p.textSize(14);
     p.textAlign(p.LEFT, p.TOP);
-    p.text("Part 3: 1000 rigid bodies collision (Sequentinal Impulses)", 32, 30);
+    p.text("Part 3: 800 rigid bodies collision (Sequentinal Impulses)", 32, 30);
     p.text("Press R to reset, T to stop/continue simulation,", 32, 56);
     p.text("E to render/not render enclosure", 32, 72);
+    p.text(`FPS: ${p.frameRate().toFixed(4)}`, 32, 96);
     p.pop();
   }
 }
@@ -782,6 +870,8 @@ function makeBody(mass, width, height, depth, worldPos, initRotation, isStatic)
   const initialAngularMomentum = vec3.create();
   vec3.transformMat3(initialAngularMomentum, currentAngleSpeed, worldInertia);
 
+  const boundRadius = Math.sqrt(width * width + height * height + depth * depth);
+
   return {
     isStatic : isStatic,
     mass : mass,
@@ -803,6 +893,8 @@ function makeBody(mass, width, height, depth, worldPos, initRotation, isStatic)
     nextAngleSpeed : vec3.clone(currentAngleSpeed),
     currentTransformMatrix : transform,
     invCurrentTransformMatrix : invTransform,
+
+    boundRadius : boundRadius,
 
     localVertices : [
       [ -width / 2, -height / 2, -depth / 2 ],

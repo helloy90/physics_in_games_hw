@@ -160,6 +160,7 @@ export function createPart3_1(p)
     }
 
     p.camera(300, 150, 300, 0, 0, 0, 0, -1, 0);
+    p.perspective();
   }
 
   function xpbdStep(dt)
