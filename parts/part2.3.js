@@ -364,6 +364,8 @@ export function createPart2_3(p)
     p.box(body2.width, body2.height, body2.depth);
     p.pop();
 
+    drawPlane(500, 0, -30, 0);
+
     drawSpring(worldConnectionPosBody1, worldConnectionPosBody2);
 
     drawForces(body1, worldConnectionPosBody1);
@@ -465,6 +467,17 @@ export function createPart2_3(p)
     p.line(0, 0, 0, 0, 0, 25);
     p.pop();
     p.drawingContext.enable(p.drawingContext.DEPTH_TEST);
+  }
+
+  function drawPlane(size, offsetX, offsetY, offsetZ)
+  {
+    p.push();
+    p.translate(offsetX, offsetY, offsetZ);
+    p.rotateX(p.HALF_PI);
+    p.noStroke();
+    p.ambientMaterial(150, 150, 150);
+    p.plane(size, size);
+    p.pop();
   }
 
   function drawOverlay()

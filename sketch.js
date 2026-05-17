@@ -23,7 +23,7 @@ new p5((p) => {
     task.loadPart("part2.3", createPart2_3(p));
     task.loadPart("part3.1", createPart3_1(p));
 
-    task.setPart("part1");
+    task.setPart("part3.1");
   };
 
   p.draw = () => {
@@ -34,7 +34,7 @@ new p5((p) => {
 
     task.update(physics_delta);
 
-    drawPlane(p, 500, 0, -30, 0);
+    // drawPlane(p, 500, 0, -30, 0);
     drawGrid(p, 500, 50, 0, -30, 0);
 
     task.render();
@@ -61,7 +61,7 @@ new p5((p) => {
     p.textSize(20);
     p.textAlign(p.LEFT, p.BOTTOM);
     p.text(`Scene: ${task.currentPartName}`, 16, p.height - 40);
-    p.text(`Press 1, 2, 3, 4 to switch to needed scene`, 16, p.height - 16);
+    p.text(`Press 1, 2, 3, 4, 5 to switch to needed scene`, 16, p.height - 16);
     p.pop();
 
     p.camera(...camParams);

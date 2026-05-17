@@ -284,6 +284,8 @@ export function createPart2_1(p)
     p.box(body.width, body.height, body.depth);
     p.pop();
 
+    drawPlane(500, 0, -30, 0);
+
     drawSpring(worldConnectionPos);
 
     const shiftedForce = vec3.clone(frameInfo.force);
@@ -368,6 +370,17 @@ export function createPart2_1(p)
     p.line(0, 0, 0, 0, 0, 25);
     p.pop();
     p.drawingContext.enable(p.drawingContext.DEPTH_TEST);
+  }
+
+  function drawPlane(size, offsetX, offsetY, offsetZ)
+  {
+    p.push();
+    p.translate(offsetX, offsetY, offsetZ);
+    p.rotateX(p.HALF_PI);
+    p.noStroke();
+    p.ambientMaterial(150, 150, 150);
+    p.plane(size, size);
+    p.pop();
   }
 
   function drawOverlay()

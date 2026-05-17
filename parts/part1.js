@@ -274,6 +274,8 @@ export function createPart1(p)
     p.box(renderParams.width, renderParams.height, renderParams.depth);
     p.pop();
 
+    drawPlane(500, 0, -30, 0);
+    
     const scaledL = vec3.create();
     vec3.normalize(scaledL, physicsParams.initialAngularMomentum);
     vec3.multiply(scaledL, scaledL, vec3.fromValues(50, 50, 50));
@@ -289,6 +291,7 @@ export function createPart1(p)
     drawArrow(200, 50, 50, currentL[0], currentL[1], currentL[2]);
 
     drawCoordAxis();
+
   }
 
   function drawOverlay()
@@ -370,6 +373,17 @@ export function createPart1(p)
     p.line(0, 0, 0, 0, 0, 50);
     p.pop();
     p.drawingContext.enable(p.drawingContext.DEPTH_TEST);
+  }
+
+  function drawPlane(size, offsetX, offsetY, offsetZ)
+  {
+    p.push();
+    p.translate(offsetX, offsetY, offsetZ);
+    p.rotateX(p.HALF_PI);
+    p.noStroke();
+    p.ambientMaterial(150, 150, 150);
+    p.plane(size, size);
+    p.pop();
   }
 }
 
