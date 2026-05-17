@@ -16,16 +16,15 @@ function skew(vec)
 {
   let [x, y, z] = vec;
   // clang-format off
-  // might seem transposed, but its right because matrices are column-major in gl-matrix!
   return mat3.fromValues(
-    0, z, -y, // column 1
-    -z, 0, x, // column 2
-    y, -x, 0  // column 3
+    0, z, -y,
+    -z, 0, x,
+    y, -x, 0
   );
   // clang-format on
 }
 
-export function createPart3_2(p)
+export function createPart3_3(p)
 {
   let bodies = [];
   let contacts = [];
@@ -38,6 +37,9 @@ export function createPart3_2(p)
   let stopSim = true;
   let subSteps = 10;
   let currentMode = 0;
+  let renderEnclosure = false;
+
+  let gridCellSize = 0;
 
   return {
     init() { resetImpl(); },
@@ -46,10 +48,7 @@ export function createPart3_2(p)
 
     update(dt) {
       if (stopSim)
-      {
         return;
-      }
-
       seqImpulseStep(dt);
     },
 
@@ -71,14 +70,69 @@ export function createPart3_2(p)
       {
         stopSim = !stopSim;
       }
+      if (key.toLowerCase() === "e")
+      {
+        renderEnclosure = !renderEnclosure;
+      }
     },
   };
 
   function resetImpl()
   {
+    bodies = [];
+    contacts = [];
+
+    let encThickness = 250;
+    let encSize = 1200 - encThickness / 2;
+
+    {
+      let enclosure =
+        [
+          {pos : vec3.fromValues(0, -30 - encThickness / 2, 0), rot : quat.create()},
+          {
+            pos :
+              vec3.fromValues(encSize / 2 - encThickness / 2, -30 + encSize / 2 - encThickness, 0),
+            rot : quat.create(),
+          },
+          {
+            pos :
+              vec3.fromValues(0, -30 + encSize / 2 - encThickness, encSize / 2 - encThickness / 2),
+            rot : quat.create(),
+          },
+          {
+            pos :
+              vec3.fromValues(-encSize / 2 + encThickness / 2, -30 + encSize / 2 - encThickness, 0),
+            rot : quat.create(),
+          },
+          {
+            pos :
+              vec3.fromValues(0, -30 + encSize / 2 - encThickness, -encSize / 2 + encThickness / 2),
+            rot : quat.create(),
+          },
+          {pos : vec3.fromValues(0, -30 + encSize - 1.5 * encThickness, 0), rot : quat.create()},
+        ]
+
+        let angles = [
+          vec3.fromValues(0, 0, 0),
+          vec3.fromValues(0, 0, 90),
+          vec3.fromValues(90, 0, 0),
+          vec3.fromValues(0, 0, 90),
+          vec3.fromValues(90, 0, 0),
+          vec3.fromValues(0, 0, 0),
+        ];
+
+      for (let i = 0; i < enclosure.length; i++)
+      {
+        quat.fromEuler(enclosure[i].rot, angles[i][0], angles[i][1], angles[i][2]);
+        bodies.push(
+          makeBody(0, encSize, encThickness, encSize, enclosure[i].pos, enclosure[i].rot, true));
+      }
+    }
+
+    // bodies
     let positions = [
-      vec3.fromValues(0, -40, 0), // plane
       vec3.fromValues(0, 0, 0),
+      vec3.fromValues(0, 0, 40),
       vec3.fromValues(0, 30, -3),
       vec3.fromValues(-3, 60, 0),
       vec3.fromValues(10, 30, 30),
@@ -90,7 +144,7 @@ export function createPart3_2(p)
     ];
 
     let rotations = [
-      quat.create(), // plane
+      quat.create(),
       quat.create(),
       quat.create(),
       quat.create(),
@@ -113,15 +167,24 @@ export function createPart3_2(p)
     quat.fromEuler(rotations[8], 0, 30, 0);
     quat.fromEuler(rotations[9], 0, 120, 0);
 
-    bodies = [];
-    contacts = [];
-
-    bodies.push(makeBody(0, 500, 20, 500, positions[0], rotations[0], true)); // plane
-
-    for (let i = 1; i < 10; i++)
+    for (let i = 0; i < positions.length; i++)
     {
       bodies.push(makeBody(5, 30, 20, 20, positions[i], rotations[i], false));
     }
+
+    // ---------- Вычисляем размер ячейки сетки ----------
+    let maxHalfExtent = 0;
+    for (const body of bodies)
+    {
+      const hw = body.width / 2;
+      const hh = body.height / 2;
+      const hd = body.depth / 2;
+      maxHalfExtent = Math.max(maxHalfExtent, hw, hh, hd);
+    }
+    // Удвоенная максимальная полуось – гарантирует, что тела в ячейках,
+    // разность индексов которых ≥2 по любой оси, не пересекаются.
+    gridCellSize = maxHalfExtent * 2;
+    // -------------------------------------------------
 
     p.camera(300, 150, 300, 0, 0, 0, 0, -1, 0);
   }
@@ -138,12 +201,10 @@ export function createPart3_2(p)
       {
         prePosSolve(body, subDt);
       }
-
       for (const contact of contacts)
       {
         solvePosConstraints(contact, subDt);
       }
-
       for (const body of bodies)
       {
         postPosSolve(body, subDt);
@@ -154,80 +215,150 @@ export function createPart3_2(p)
   function collectContacts()
   {
     const currentContacts = [];
+    const grid = buildSpatialGrid();
 
-    for (let i = 0; i < bodies.length; i++)
+    const candidatePairs = new Set();
+    for (const [, bodyIndices] of grid)
     {
-      for (let j = i + 1; j < bodies.length; j++)
+      const n = bodyIndices.length;
+      for (let a = 0; a < n; a++)
       {
-        if (bodies[i].isStatic && bodies[j].isStatic)
-          continue;
-
-        const obbContacts = computeOBBContacts(bodies[i], bodies[j]); // sat
-        for (const c of obbContacts)
+        for (let b = a + 1; b < n; b++)
         {
-          currentContacts.push(c);
+          let i = bodyIndices[a];
+          let j = bodyIndices[b];
+          if (i > j)
+            [i, j] = [ j, i ];
+          candidatePairs.add(`${i},${j}`);
         }
       }
     }
+
+    for (const pairKey of candidatePairs)
+    {
+      const [iStr, jStr] = pairKey.split(',');
+      const i = parseInt(iStr);
+      const j = parseInt(jStr);
+      const bodyA = bodies[i];
+      const bodyB = bodies[j];
+
+      if (bodyA.isStatic && bodyB.isStatic)
+        continue;
+
+      const obbContacts = satContacts(bodyA, bodyB);
+      for (const c of obbContacts)
+      {
+        currentContacts.push(c);
+      }
+    }
+
     return currentContacts;
   }
 
-  function computeOBBContacts(bodyA, bodyB)
+  function buildSpatialGrid()
   {
-    const axisA = getBoxAxis(bodyA);
-    const axisB = getBoxAxis(bodyB);
-    const halfA = vec3.fromValues(bodyA.width / 2, bodyA.height / 2, bodyA.depth / 2);
-    const halfB = vec3.fromValues(bodyB.width / 2, bodyB.height / 2, bodyB.depth / 2);
-    const centerA = bodyA.currentWorldPos;
-    const centerB = bodyB.currentWorldPos;
+    const grid = new Map();
+
+    for (const body of bodies)
+    {
+      const pos = body.currentWorldPos;
+
+      const hw = body.width / 2;
+      const hh = body.height / 2;
+      const hd = body.depth / 2;
+      const radius = Math.sqrt(hw * hw + hh * hh + hd * hd);
+
+      const minCellX = Math.floor((pos[0] - radius) / gridCellSize);
+      const maxCellX = Math.floor((pos[0] + radius) / gridCellSize);
+      const minCellY = Math.floor((pos[1] - radius) / gridCellSize);
+      const maxCellY = Math.floor((pos[1] + radius) / gridCellSize);
+      const minCellZ = Math.floor((pos[2] - radius) / gridCellSize);
+      const maxCellZ = Math.floor((pos[2] + radius) / gridCellSize);
+
+      for (let ix = minCellX; ix <= maxCellX; ix++)
+      {
+        for (let iy = minCellY; iy <= maxCellY; iy++)
+        {
+          for (let iz = minCellZ; iz <= maxCellZ; iz++)
+          {
+            const key = `${ix},${iy},${iz}`;
+            if (!grid.has(key))
+            {
+              grid.set(key, []);
+            }
+            grid.get(key).push(i);
+          }
+        }
+      }
+    }
+    return grid;
+  }
+
+  function satContacts(bodyA, bodyB)
+  {
+    const axesA = getBoxAxis(bodyA);
+    const halfSizeA = vec3.fromValues(bodyA.width / 2, bodyA.height / 2, bodyA.depth / 2);
+    const axesB = getBoxAxis(bodyB);
+    const halfSizeB = vec3.fromValues(bodyB.width / 2, bodyB.height / 2, bodyB.depth / 2);
+
     const fromAtoB = vec3.create();
-    vec3.subtract(fromAtoB, centerB, centerA);
-
-    const R = mat3.create();
-    const axisAMat = fromColumns(axisA[0], axisA[1], axisA[2]);
-    const axisAMatTransposed = mat3.create();
-    mat3.transpose(axisAMatTransposed, axisAMat);
-    const axisBMat = fromColumns(axisB[0], axisB[1], axisB[2]);
-
-    mat3.multiply(R, axisAMatTransposed, axisBMat);
-
-    const tA = vec3.create();
-    vec3.transformMat3(tA, fromAtoB, axisAMatTransposed);
+    vec3.subtract(fromAtoB, bodyB.currentWorldPos, bodyA.currentWorldPos);
 
     let minOverlap = Infinity;
     let bestAxis = vec3.create();
 
-    for (let i = 0; i < 3; i++)
-    {
-      const axis = axisA[i];
-      const projA = halfA[i];
-      const projB = Math.abs(R[0 + 3 * i]) * halfB[0] + Math.abs(R[1 + 3 * i]) * halfB[1] +
-        Math.abs(R[2 + 3 * i]) * halfB[2];
-      const d = Math.abs(vec3.dot(fromAtoB, axis));
-      const overlap = projA + projB - d;
-      if (overlap <= 0)
-        return [];
+    const tryAxis = (axis) => {
+      const len = vec3.length(axis);
+      if (len < 1e-9)
+      {
+        return true;
+      }
+
+      const currentAxis = vec3.clone(axis);
+      vec3.scale(currentAxis, currentAxis, 1.0 / len);
+
+      const projOnAxis = (axis, bodyAxes, halfSize) => {
+        return halfSize[0] * Math.abs(vec3.dot(axis, bodyAxes[0])) +
+          halfSize[1] * Math.abs(vec3.dot(axis, bodyAxes[1])) +
+          halfSize[2] * Math.abs(vec3.dot(axis, bodyAxes[2]));
+      };
+
+      const projA = projOnAxis(currentAxis, axesA, halfSizeA);
+      const projB = projOnAxis(currentAxis, axesB, halfSizeB);
+
+      const signedDist = vec3.dot(fromAtoB, currentAxis);
+      const dist = Math.abs(signedDist);
+      const overlap = projA + projB - dist;
+      if (overlap < 0)
+      {
+        return false;
+      }
+
       if (overlap < minOverlap)
       {
         minOverlap = overlap;
-        vec3.copy(bestAxis, axis);
+        const sign = signedDist >= 0 ? 1 : -1;
+        bestAxis = vec3.clone(currentAxis);
+        vec3.scale(bestAxis, bestAxis, sign);
+      }
+
+      return true;
+    };
+
+
+    for (let i = 0; i < 3; i++)
+    {
+      if (!tryAxis(axesA[i]))
+      {
+        return [];
       }
     }
 
     for (let i = 0; i < 3; i++)
     {
-      const axis = axisB[i];
-      const projA = Math.abs(R[0 + i]) * halfA[0] + Math.abs(R[3 + i]) * halfA[1] +
-        Math.abs(R[6 + i]) * halfA[2];
-      const projB = halfB[i];
-      const d = Math.abs(vec3.dot(fromAtoB, axis));
-      const overlap = projA + projB - d;
-      if (overlap <= 0)
-        return [];
-      if (overlap < minOverlap)
+      if (!tryAxis(axesB[i]))
       {
-        minOverlap = overlap;
-        vec3.copy(bestAxis, axis);
+        return [];
       }
     }
 
@@ -236,239 +367,87 @@ export function createPart3_2(p)
       for (let j = 0; j < 3; j++)
       {
         const axis = vec3.create();
-        vec3.cross(axis, axisA[i], axisB[j]);
-        const lenSq = vec3.squaredLength(axis);
-        if (lenSq < 1e-8)
-          continue;
-        vec3.scale(axis, axis, 1 / Math.sqrt(lenSq));
-
-        let projA = 0;
-        for (let k = 0; k < 3; k++)
+        vec3.cross(axis, axesA[i], axesB[j]);
+        if (!tryAxis(axis))
         {
-          projA += halfA[k] * Math.abs(vec3.dot(axis, axisA[k]));
-        }
-
-        let projB = 0;
-        for (let k = 0; k < 3; k++)
-        {
-          projB += halfB[k] * Math.abs(vec3.dot(axis, axisB[k]));
-        }
-        const d = Math.abs(vec3.dot(fromAtoB, axis));
-        const overlap = projA + projB - d;
-        if (overlap <= 0)
           return [];
-        if (overlap < minOverlap)
-        {
-          minOverlap = overlap;
-          vec3.copy(bestAxis, axis);
         }
       }
-    }
-
-    const dotTA = vec3.dot(vec3.subtract(vec3.create(), centerA, centerB), bestAxis);
-    if (dotTA < 0)
-    {
-      vec3.negate(bestAxis, bestAxis);
-    }
-
-    let refBody, incBody;
-    let refAxes, incAxes;
-    let refHalf, incHalf;
-    let refNormalLocal;
-    let flip;
-
-    const absDotA = [
-      Math.abs(vec3.dot(bestAxis, axisA[0])),
-      Math.abs(vec3.dot(bestAxis, axisA[1])),
-      Math.abs(vec3.dot(bestAxis, axisA[2])),
-    ];
-    const absDotB = [
-      Math.abs(vec3.dot(bestAxis, axisB[0])),
-      Math.abs(vec3.dot(bestAxis, axisB[1])),
-      Math.abs(vec3.dot(bestAxis, axisB[2])),
-    ];
-    const maxA = Math.max(absDotA[0], absDotA[1], absDotA[2]);
-    const maxB = Math.max(absDotB[0], absDotB[1], absDotB[2]);
-
-    if (maxA >= maxB)
-    {
-      refBody = bodyA;
-      incBody = bodyB;
-      refAxes = axisA;
-      incAxes = axisB;
-      refHalf = halfA;
-      incHalf = halfB;
-      refNormalLocal = absDotA.indexOf(maxA);
-      flip = false;
-    }
-    else
-    {
-      refBody = bodyB;
-      incBody = bodyA;
-      refAxes = axisB;
-      incAxes = axisA;
-      refHalf = halfB;
-      incHalf = halfA;
-      refNormalLocal = absDotB.indexOf(maxB);
-      flip = true;
-    }
-
-    const refNormal = vec3.clone(refAxes[refNormalLocal]);
-
-    const refToInc = vec3.subtract(vec3.create(), incBody.currentWorldPos, refBody.currentWorldPos);
-    if (vec3.dot(refNormal, refToInc) < 0)
-    {
-      vec3.negate(refNormal, refNormal);
-    }
-
-    let refTan1Idx = (refNormalLocal + 1) % 3;
-    let refTan2Idx = (refNormalLocal + 2) % 3;
-    const refTan1 = refAxes[refTan1Idx];
-    const refTan2 = refAxes[refTan2Idx];
-    const refCenter = vec3.copy(vec3.create(), refBody.currentWorldPos);
-    vec3.scaleAndAdd(refCenter, refCenter, refNormal, vec3.dot(refNormal, refHalf));
-
-    let incNormalLocal = 0;
-    let maxDot = -Infinity;
-    for (let i = 0; i < 3; i++)
-    {
-      const d = vec3.dot(incAxes[i], refNormal);
-      if (Math.abs(d) > maxDot)
-      {
-        maxDot = Math.abs(d);
-        incNormalLocal = i;
-      }
-    }
-
-    let incNormal = vec3.clone(incAxes[incNormalLocal]);
-    if (vec3.dot(incNormal, refNormal) > 0)
-    {
-      vec3.negate(incNormal, incNormal);
-    }
-
-    let incTan1Idx = (incNormalLocal + 1) % 3;
-    let incTan2Idx = (incNormalLocal + 2) % 3;
-    const incTan1 = incAxes[incTan1Idx];
-    const incTan2 = incAxes[incTan2Idx];
-
-    const incVerticesLocal = [ [ 1, 1 ], [ 1, -1 ], [ -1, -1 ], [ -1, 1 ] ];
-    let incWorldVerts = [];
-    for (const v of incVerticesLocal)
-    {
-      const pt = vec3.copy(vec3.create(), incBody.currentWorldPos);
-      vec3.scaleAndAdd(pt, pt, incNormal, vec3.dot(incNormal, incHalf));
-      vec3.scaleAndAdd(pt, pt, incTan1, v[0] * incHalf[incTan1Idx]);
-      vec3.scaleAndAdd(pt, pt, incTan2, v[1] * incHalf[incTan2Idx]);
-      incWorldVerts.push(pt);
-    }
-
-    const clipPlanes = [
-      {normal : vec3.clone(refTan1), dist : vec3.dot(refTan1, refCenter) + refHalf[refTan1Idx]},
-      {
-        normal : vec3.negate(vec3.create(), refTan1),
-        dist : -vec3.dot(refTan1, refCenter) + refHalf[refTan1Idx],
-      },
-      {normal : vec3.clone(refTan2), dist : vec3.dot(refTan2, refCenter) + refHalf[refTan2Idx]},
-      {
-        normal : vec3.negate(vec3.create(), refTan2),
-        dist : -vec3.dot(refTan2, refCenter) + refHalf[refTan2Idx],
-      },
-    ];
-
-    let clippedVerts = incWorldVerts;
-    for (const plane of clipPlanes)
-    {
-      const newVerts = [];
-      for (let i = 0; i < clippedVerts.length; i++)
-      {
-        const v1 = clippedVerts[i];
-        const v2 = clippedVerts[(i + 1) % clippedVerts.length];
-        const d1 = vec3.dot(v1, plane.normal) - plane.dist;
-        const d2 = vec3.dot(v2, plane.normal) - plane.dist;
-        if (d1 <= 0)
-          newVerts.push(vec3.clone(v1));
-        if (d1 * d2 < 0)
-        {
-          const t = d1 / (d1 - d2);
-          const newPt = vec3.lerp(vec3.create(), v1, v2, t);
-          newVerts.push(newPt);
-        }
-      }
-      if (newVerts.length < 3)
-        break;
-      clippedVerts = newVerts;
     }
 
     let currentContacts = [];
-    for (const pt of clippedVerts)
+
+    const vertsA = getWorldVertices(bodyA);
+    const vertsB = getWorldVertices(bodyB);
+
+    const normAToB = vec3.clone(bestAxis);
+    const normBToA = vec3.clone(bestAxis);
+    vec3.scale(normBToA, normBToA, -1);
+
+    for (const vert of vertsA)
     {
-      const penetration =
-        vec3.dot(refNormal, vec3.subtract(vec3.create(), pt, refCenter)) + refHalf[refNormalLocal];
-      const colliderContact =
-        vec3.subtract(vec3.create(), pt, vec3.scale(vec3.create(), refNormal, penetration));
-
-      let worldNormal;
-      if (!flip)
+      if (pointInsideBoxCheck(vert, bodyB, halfSizeB))
       {
-        worldNormal = vec3.negate(vec3.create(), refNormal);
-      }
-      else
-      {
-        worldNormal = vec3.clone(refNormal);
-      }
+        const secondContact = vec3.create();
+        vec3.scaleAndAdd(secondContact, vert, normBToA, minOverlap);
 
-      const penMoveDir = vec3.clone(worldNormal);
-      const colliderMoveDir = vec3.negate(vec3.create(), worldNormal);
-
-      const penBody = flip ? incBody : refBody;
-      const colliderBody = flip ? refBody : incBody;
-
-      if (!flip)
-      {
         currentContacts.push({
-          penBody : penBody,
-          penContact : vec3.clone(colliderContact),
-          penMoveDir,
-          colliderBody : colliderBody,
-          colliderContact : vec3.clone(pt),
-          colliderMoveDir,
-          penetration,
+          firstBody : bodyA,
+          firstContact : vert,
+          firstMoveDir : vec3.clone(normBToA),
+          secondBody : bodyB,
+          secondContact : secondContact,
+          secondMoveDir : vec3.clone(normAToB),
+          penetration : minOverlap,
           lambda : 0,
         });
       }
-      else
+    }
+
+    for (const vert of vertsB)
+    {
+      if (pointInsideBoxCheck(vert, bodyA, halfSizeA))
       {
+        const secondContact = vec3.create();
+        vec3.scaleAndAdd(secondContact, vert, normAToB, minOverlap);
+
         currentContacts.push({
-          penBody,
-          penContact : vec3.clone(pt),
-          penMoveDir,
-          colliderBody,
-          colliderContact : vec3.clone(colliderContact),
-          colliderMoveDir,
-          penetration,
+          firstBody : bodyB,
+          firstContact : vert,
+          firstMoveDir : vec3.clone(normAToB),
+          secondBody : bodyA,
+          secondContact : secondContact,
+          secondMoveDir : vec3.clone(normBToA),
+          penetration : minOverlap,
           lambda : 0,
         });
       }
+    }
+
+    if (currentContacts.length === 0)
+    {
+      const firstContact = vec3.clone(normAToB);
+      vec3.scale(firstContact, firstContact, halfSizeA[0]);
+      vec3.transformMat4(firstContact, firstContact, bodyA.currentTransformMatrix);
+
+      const secondContact = vec3.clone(normBToA);
+      vec3.scale(secondContact, secondContact, halfSizeB[0]);
+      vec3.transformMat4(secondContact, secondContact, bodyB.currentTransformMatrix);
+
+      currentContacts.push({
+        firstBody : bodyA,
+        firstContact : firstContact,
+        firstMoveDir : vec3.clone(normBToA),
+        secondBody : bodyB,
+        secondContact : secondContact,
+        secondMoveDir : vec3.clone(normAToB),
+        penetration : minOverlap,
+        lambda : 0,
+      });
     }
 
     return currentContacts;
   }
-
-  function fromColumns(c0, c1, c2)
-  {
-    const out = mat3.create();
-    out[0] = c0[0];
-    out[1] = c0[1];
-    out[2] = c0[2];
-    out[3] = c1[0];
-    out[4] = c1[1];
-    out[5] = c1[2];
-    out[6] = c2[0];
-    out[7] = c2[1];
-    out[8] = c2[2];
-    return out;
-  };
-
 
   function getBoxAxis(body)
   {
@@ -480,6 +459,36 @@ export function createPart3_2(p)
       vec3.fromValues(rotMat[3], rotMat[4], rotMat[5]),
       vec3.fromValues(rotMat[6], rotMat[7], rotMat[8]),
     ];
+  }
+
+  function getWorldVertices(body)
+  {
+    return body.localVertices.map(v => {
+      const worldVert = vec3.create();
+      vec3.transformMat4(worldVert, v, body.currentTransformMatrix);
+      return worldVert;
+    });
+  }
+
+  function pointInsideBoxCheck(
+    vert,
+    body,
+    halfSize,
+  )
+  {
+    const localVert = vec3.create();
+    vec3.transformMat4(localVert, vert, body.invCurrentTransformMatrix);
+    const absLocalVert = vec3.create();
+    for (let i = 0; i < 3; i++)
+    {
+      absLocalVert[i] = Math.abs(localVert[i]);
+    }
+
+    const dists = vec3.create();
+
+    vec3.subtract(dists, halfSize, absLocalVert);
+
+    return dists[0] >= 0 && dists[1] >= 0 && dists[2] >= 0;
   }
 
   function prePosSolve(body, dt)
@@ -514,17 +523,17 @@ export function createPart3_2(p)
 
   function solvePosConstraints(contact, dt)
   {
-    const penBodyParams =
-      getParamsForImpulse(contact.penBody, contact.penContact, contact.penMoveDir);
+    const firstBodyParams =
+      getParamsForImpulse(contact.firstBody, contact.firstContact, contact.firstMoveDir);
 
-    const colliderBodyParams =
-      getParamsForImpulse(contact.colliderBody, contact.colliderContact, contact.colliderMoveDir);
+    const secondBodyParams =
+      getParamsForImpulse(contact.secondBody, contact.secondContact, contact.secondMoveDir);
 
-    const effMass = 1.0 / (penBodyParams.invEffMass + colliderBodyParams.invEffMass);
-    const Jv = -vec3.dot(contact.penMoveDir, contact.penBody.currentVelocity) -
-      vec3.dot(penBodyParams.rCrossN, contact.penBody.currentAngleSpeed) +
-      vec3.dot(contact.colliderMoveDir, contact.colliderBody.currentVelocity) +
-      vec3.dot(colliderBodyParams.rCrossN, contact.colliderBody.currentAngleSpeed);
+    const effMass = 1.0 / (firstBodyParams.invEffMass + secondBodyParams.invEffMass);
+    const Jv = -vec3.dot(contact.firstMoveDir, contact.firstBody.currentVelocity) -
+      vec3.dot(firstBodyParams.rCrossN, contact.firstBody.currentAngleSpeed) +
+      vec3.dot(contact.secondMoveDir, contact.secondBody.currentVelocity) +
+      vec3.dot(secondBodyParams.rCrossN, contact.secondBody.currentAngleSpeed);
 
     let oldLambda = contact.lambda;
 
@@ -539,9 +548,9 @@ export function createPart3_2(p)
     contact.lambda = newLambda;
 
     updatePosAndQuatFromConstraint(
-      contact.penBody, contact.penMoveDir, penBodyParams.rCrossN, deltaLambda, dt);
+      contact.firstBody, contact.firstMoveDir, firstBodyParams.rCrossN, deltaLambda, dt);
     updatePosAndQuatFromConstraint(
-      contact.colliderBody, contact.colliderMoveDir, colliderBodyParams.rCrossN, deltaLambda, dt);
+      contact.secondBody, contact.secondMoveDir, secondBodyParams.rCrossN, deltaLambda, dt);
   }
 
   function getBaumgarteLambda(mass, stretch, Jv, dt)
@@ -655,16 +664,26 @@ export function createPart3_2(p)
   {
     for (const body of bodies)
     {
+      if (body.isStatic === true && renderEnclosure !== true)
+      {
+        continue;
+      }
       p.push();
       p.applyMatrix([...body.currentTransformMatrix ]);
-      p.ambientMaterial(65, 130, 255);
+      if (body.isStatic === true)
+      {
+        p.ambientMaterial(90, 90, 90);
+      }
+      else
+      {
+        p.ambientMaterial(65, 130, 255);
+      }
       p.box(body.width, body.height, body.depth);
       p.pop();
 
       drawCoordAxis(body);
     }
   }
-
   function drawArrow(colorR, colorG, colorB, fromVecX, fromVecY, fromVecZ, toVecX, toVecY, toVecZ)
   {
     const up = vec3.fromValues(0, 1, 0);
@@ -717,7 +736,8 @@ export function createPart3_2(p)
     p.textSize(14);
     p.textAlign(p.LEFT, p.TOP);
     p.text("Part 3: 1000 rigid bodies collision (Sequentinal Impulses)", 32, 30);
-    p.text("Press R to reset. T to stop/continue simulation", 32, 56);
+    p.text("Press R to reset, T to stop/continue simulation,", 32, 56);
+    p.text("E to render/not render enclosure", 32, 72);
     p.pop();
   }
 }

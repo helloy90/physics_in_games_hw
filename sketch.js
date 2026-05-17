@@ -4,6 +4,7 @@ import {createPart2_2} from "./parts/part2.2.js";
 import {createPart2_3} from "./parts/part2.3.js";
 import {createPart3_1} from "./parts/part3.1.js";
 import {createPart3_2} from "./parts/part3.2.js";
+import {createPart3_3} from "./parts/part3.3.js";
 import {TaskHandler} from "./taskHandler.js";
 
 new p5((p) => {
@@ -24,8 +25,9 @@ new p5((p) => {
     task.loadPart("part2.3", createPart2_3(p));
     task.loadPart("part3.1", createPart3_1(p));
     task.loadPart("part3.2", createPart3_2(p));
+    task.loadPart("part3.3", createPart3_3(p));
 
-    task.setPart("part3.2");
+    task.setPart("part1");
   };
 
   p.draw = () => {
@@ -83,8 +85,8 @@ new p5((p) => {
       task.setPart("part3.1");
     if (p.key === "6")
       task.setPart("part3.2");
-    // if (p.key === "7")
-    //   task.setPart("part3.1");
+    if (p.key === "7")
+      task.setPart("part3.3");
     task.keyPressed(p.key);
   };
 
