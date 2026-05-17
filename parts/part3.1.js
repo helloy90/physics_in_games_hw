@@ -5,7 +5,6 @@ import * as vec3 from "../libraries/esm/vec3.js";
 
 const sim_modes = [
   {label : "1) XPBD"},
-  {label : "2) Sequential Impulses"},
 ];
 
 export function createPart3_1(p)
@@ -102,7 +101,7 @@ export function createPart3_1(p)
     bodies = [];
     contacts = [];
 
-    bodies.push(makeBody(1000, 500, 20, 500, positions[0], rotations[0], true)); // plane
+    bodies.push(makeBody(0, 500, 20, 500, positions[0], rotations[0], true)); // plane
 
     for (let i = 1; i < 10; i++)
     {
@@ -528,56 +527,56 @@ export function createPart3_1(p)
     ];
   }
 
-  function getWorldVertices(body)
-  {
-    return body.localVertices.map(v => {
-      const worldVert = vec3.create();
-      vec3.transformMat4(worldVert, v, body.currentTransformMatrix);
-      return worldVert;
-    });
-  }
+  // function getWorldVertices(body)
+  // {
+  //   return body.localVertices.map(v => {
+  //     const worldVert = vec3.create();
+  //     vec3.transformMat4(worldVert, v, body.currentTransformMatrix);
+  //     return worldVert;
+  //   });
+  // }
 
-  function pointInsideBoxCheck(body, vert, axis)
-  {
-    const half = vec3.fromValues(body.width / 2, body.height / 2, body.depth / 2);
+  // function pointInsideBoxCheck(body, vert, axis)
+  // {
+  //   const half = vec3.fromValues(body.width / 2, body.height / 2, body.depth / 2);
 
-    const localVert = vec3.create();
-    vec3.transformMat4(localVert, vert, body.invCurrentTransformMatrix);
-    const absLocalVert = vec3.create();
-    for (let i = 0; i < 3; i++)
-    {
-      absLocalVert[i] = Math.abs(localVert[i]);
-    }
+  //   const localVert = vec3.create();
+  //   vec3.transformMat4(localVert, vert, body.invCurrentTransformMatrix);
+  //   const absLocalVert = vec3.create();
+  //   for (let i = 0; i < 3; i++)
+  //   {
+  //     absLocalVert[i] = Math.abs(localVert[i]);
+  //   }
 
-    const dists = vec3.create();
+  //   const dists = vec3.create();
 
-    vec3.subtract(dists, half, absLocalVert);
+  //   vec3.subtract(dists, half, absLocalVert);
 
-    let minDist = Infinity;
-    let axisIdx = 0;
-    let sign = 1;
-    for (let i = 0; i < 3; i++)
-    {
-      if (dists[i] < 0)
-      {
-        return null;
-      }
+  //   let minDist = Infinity;
+  //   let axisIdx = 0;
+  //   let sign = 1;
+  //   for (let i = 0; i < 3; i++)
+  //   {
+  //     if (dists[i] < 0)
+  //     {
+  //       return null;
+  //     }
 
-      if (dists[i] < minDist)
-      {
-        minDist = dists[i];
-        axisIdx = i;
-        sign = localVert[i] > 0 ? 1 : -1;
-      }
-    }
+  //     if (dists[i] < minDist)
+  //     {
+  //       minDist = dists[i];
+  //       axisIdx = i;
+  //       sign = localVert[i] > 0 ? 1 : -1;
+  //     }
+  //   }
 
-    const worldNormal = vec3.create();
-    vec3.scale(worldNormal, axis[axisIdx], sign);
-    return {
-      worldNormal : worldNormal,
-      penetration : minDist,
-    };
-  }
+  //   const worldNormal = vec3.create();
+  //   vec3.scale(worldNormal, axis[axisIdx], sign);
+  //   return {
+  //     worldNormal : worldNormal,
+  //     penetration : minDist,
+  //   };
+  // }
 
   function prePosSolve(body, dt)
   {
@@ -801,9 +800,8 @@ export function createPart3_1(p)
     p.fill(229, 231, 235);
     p.textSize(14);
     p.textAlign(p.LEFT, p.TOP);
-    p.text("Part 3: 10 rigid bodies collision", 32, 30);
-    p.text(`Mode: ${sim_modes[currentMode].label}`, 32, 56);
-    p.text("Press R to reset. T to stop/continue simulation", 32, 82);
+    p.text("Part 3: 10 rigid bodies collision (XPBD)", 32, 30);
+    p.text("Press R to reset. T to stop/continue simulation", 32, 56);
     p.pop();
   }
 }
@@ -851,7 +849,7 @@ function makeBody(mass, width, height, depth, worldPos, initRotation, isStatic)
   return {
     isStatic : isStatic,
     mass : mass,
-    invMass : 1.0 / mass,
+    invMass : mass > 0 ? 1.0 / mass : 0,
     width : width,
     height : height,
     depth : depth,

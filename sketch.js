@@ -3,6 +3,7 @@ import {createPart2_1} from "./parts/part2.1.js";
 import {createPart2_2} from "./parts/part2.2.js";
 import {createPart2_3} from "./parts/part2.3.js";
 import {createPart3_1} from "./parts/part3.1.js";
+import {createPart3_2} from "./parts/part3.2.js";
 import {TaskHandler} from "./taskHandler.js";
 
 new p5((p) => {
@@ -22,8 +23,9 @@ new p5((p) => {
     task.loadPart("part2.2", createPart2_2(p));
     task.loadPart("part2.3", createPart2_3(p));
     task.loadPart("part3.1", createPart3_1(p));
+    task.loadPart("part3.2", createPart3_2(p));
 
-    task.setPart("part3.1");
+    task.setPart("part3.2");
   };
 
   p.draw = () => {
@@ -61,7 +63,7 @@ new p5((p) => {
     p.textSize(20);
     p.textAlign(p.LEFT, p.BOTTOM);
     p.text(`Scene: ${task.currentPartName}`, 16, p.height - 40);
-    p.text(`Press 1, 2, 3, 4, 5 to switch to needed scene`, 16, p.height - 16);
+    p.text(`Press 1, 2, 3, 4, 5, 6, 7 to switch to needed scene`, 16, p.height - 16);
     p.pop();
 
     p.camera(...camParams);
@@ -79,6 +81,10 @@ new p5((p) => {
       task.setPart("part2.3");
     if (p.key === "5")
       task.setPart("part3.1");
+    if (p.key === "6")
+      task.setPart("part3.2");
+    // if (p.key === "7")
+    //   task.setPart("part3.1");
     task.keyPressed(p.key);
   };
 

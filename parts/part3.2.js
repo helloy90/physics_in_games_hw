@@ -4,22 +4,36 @@ import * as quat from "../libraries/esm/quat.js";
 import * as vec3 from "../libraries/esm/vec3.js";
 
 const sim_modes = [
-  {label : "1) XPBD"},
-  {label : "2) Sequential Impulses"},
+  {label : "1) Sequential Impulses"},
 ];
 
-export function createPart3_1(p)
+/**
+ * Get the skew matrix from vector
+ * @param {ReadonlyVec3} vec The vector
+ * @returns {mat3} The skew matrix
+ */
+function skew(vec)
+{
+  let [x, y, z] = vec;
+  // clang-format off
+  // might seem transposed, but its right because matrices are column-major in gl-matrix!
+  return mat3.fromValues(
+    0, z, -y, // column 1
+    -z, 0, x, // column 2
+    y, -x, 0  // column 3
+  );
+  // clang-format on
+}
+
+export function createPart3_2(p)
 {
   let bodies = [];
   let contacts = [];
 
-  const contactParams = {
-    compliance : 0.00000,
-    staticFriction : 0.2,
-  };
+  const baumgarteBetta = 0.3;
 
   const extAcceleration = vec3.fromValues(0, -20, 0);
-  const maxDeltaLambda = 0.005;
+  const maxDeltaLambda = 99999999;
 
   let stopSim = true;
   let subSteps = 10;
@@ -36,7 +50,7 @@ export function createPart3_1(p)
         return;
       }
 
-      xpbdStep(dt);
+      seqImpulseStep(dt);
     },
 
     render() { drawTask(); },
@@ -102,7 +116,7 @@ export function createPart3_1(p)
     bodies = [];
     contacts = [];
 
-    bodies.push(makeBody(1000, 500, 20, 500, positions[0], rotations[0], true)); // plane
+    bodies.push(makeBody(0, 500, 20, 500, positions[0], rotations[0], true)); // plane
 
     for (let i = 1; i < 10; i++)
     {
@@ -112,7 +126,7 @@ export function createPart3_1(p)
     p.camera(300, 150, 300, 0, 0, 0, 0, -1, 0);
   }
 
-  function xpbdStep(dt)
+  function seqImpulseStep(dt)
   {
     const subDt = dt / subSteps;
 
@@ -408,16 +422,14 @@ export function createPart3_1(p)
 
       const penBody = flip ? incBody : refBody;
       const colliderBody = flip ? refBody : incBody;
-
-      const penContact = vec3.clone(pt);
-      const colliderContactPoint = vec3.clone(colliderContact);
+  
       if (!flip)
       {
         currentContacts.push({
-          penBody : penBody, // A
+          penBody : penBody,
           penContact : vec3.clone(colliderContact),
           penMoveDir,
-          colliderBody : colliderBody, // B
+          colliderBody : colliderBody,
           colliderContact : vec3.clone(pt),
           colliderMoveDir,
           penetration,
@@ -457,64 +469,6 @@ export function createPart3_1(p)
     return out;
   };
 
-  // function collectContacts()
-  // {
-  //   const currentContacts = [];
-
-  //   const worldData =
-  //     bodies.map(body => { return {axis : getBoxAxis(body), vertices : getWorldVertices(body)};
-  //     });
-
-  //   for (let i = 0; i < bodies.length; i++)
-  //   {
-  //     const firstBody = bodies[i];
-  //     const firstBodyData = worldData[i];
-  //     for (let j = 0; j < bodies.length; j++)
-  //     {
-  //       if (i === j)
-  //       {
-  //         continue;
-  //       }
-  //       const secondBody = bodies[j];
-  //       const secondBodyData = worldData[j];
-
-  //       for (const vert of firstBodyData.vertices)
-  //       {
-  //         const collisionInfo = pointInsideBoxCheck(secondBody, vert, secondBodyData.axis);
-
-  //         if (collisionInfo !== null)
-  //         {
-  //           // const localPenContact = vec3.create();
-  //           // vec3.transformMat4(localPenContact, vert, firstBody.invCurrentTransformMatrix);
-
-  //           const colliderContact = vec3.create();
-  //           vec3.scaleAndAdd(
-  //             colliderContact, vert, collisionInfo.worldNormal, collisionInfo.penetration);
-
-  //           // const localColliderContact = vec3.create();
-  //           // vec3.transformMat4(
-  //           //   localColliderContact, colliderContact, secondBody.invCurrentTransformMatrix);
-
-  //           const colliderMoveDir = vec3.create();
-  //           vec3.scale(colliderMoveDir, collisionInfo.worldNormal, -1);
-
-  //           currentContacts.push({
-  //             penBody : firstBody,
-  //             penContact : vert,
-  //             penMoveDir : collisionInfo.worldNormal,
-  //             colliderBody : secondBody,
-  //             colliderContact : colliderContact,
-  //             colliderMoveDir : colliderMoveDir,
-  //             penetration : collisionInfo.penetration,
-  //             lambda : 0,
-  //           });
-  //         }
-  //       }
-  //     }
-  //   }
-
-  //   return currentContacts;
-  // }
 
   function getBoxAxis(body)
   {
@@ -528,57 +482,6 @@ export function createPart3_1(p)
     ];
   }
 
-  function getWorldVertices(body)
-  {
-    return body.localVertices.map(v => {
-      const worldVert = vec3.create();
-      vec3.transformMat4(worldVert, v, body.currentTransformMatrix);
-      return worldVert;
-    });
-  }
-
-  function pointInsideBoxCheck(body, vert, axis)
-  {
-    const half = vec3.fromValues(body.width / 2, body.height / 2, body.depth / 2);
-
-    const localVert = vec3.create();
-    vec3.transformMat4(localVert, vert, body.invCurrentTransformMatrix);
-    const absLocalVert = vec3.create();
-    for (let i = 0; i < 3; i++)
-    {
-      absLocalVert[i] = Math.abs(localVert[i]);
-    }
-
-    const dists = vec3.create();
-
-    vec3.subtract(dists, half, absLocalVert);
-
-    let minDist = Infinity;
-    let axisIdx = 0;
-    let sign = 1;
-    for (let i = 0; i < 3; i++)
-    {
-      if (dists[i] < 0)
-      {
-        return null;
-      }
-
-      if (dists[i] < minDist)
-      {
-        minDist = dists[i];
-        axisIdx = i;
-        sign = localVert[i] > 0 ? 1 : -1;
-      }
-    }
-
-    const worldNormal = vec3.create();
-    vec3.scale(worldNormal, axis[axisIdx], sign);
-    return {
-      worldNormal : worldNormal,
-      penetration : minDist,
-    };
-  }
-
   function prePosSolve(body, dt)
   {
     if (body.isStatic === true)
@@ -586,36 +489,12 @@ export function createPart3_1(p)
       return;
     }
 
-    vec3.copy(body.prevWorldPos, body.currentWorldPos);
-
-    vec3.scaleAndAdd(body.currentVelocity, body.currentVelocity, extAcceleration, dt);
-
-    vec3.scaleAndAdd(body.currentWorldPos, body.currentWorldPos, body.currentVelocity, dt);
-
-    quat.copy(body.prevQuat, body.currentQuat);
+    vec3.copy(body.currentWorldPos, body.nextWorldPos);
+    vec3.copy(body.currentVelocity, body.nextVelocity);
+    vec3.copy(body.currentAngleSpeed, body.nextAngleSpeed);
+    vec3.copy(body.currentQuat, body.nextQuat);
 
     updateWorldInertia(body);
-
-    const Jw = vec3.create();
-    const temp = vec3.create();
-    const gyroTerm = vec3.create();
-    vec3.transformMat3(Jw, body.currentAngleSpeed, body.worldInertiaTensor);
-    vec3.cross(temp, body.currentAngleSpeed, Jw);
-    vec3.transformMat3(gyroTerm, temp, body.worldInertiaInvTensor);
-    vec3.scale(gyroTerm, gyroTerm, -dt);
-
-    vec3.add(body.currentAngleSpeed, body.currentAngleSpeed, gyroTerm);
-
-    const angleQuat = quat.fromValues(
-      0.5 * dt * body.currentAngleSpeed[0],
-      0.5 * dt * body.currentAngleSpeed[1],
-      0.5 * dt * body.currentAngleSpeed[2],
-      0);
-    const finalAddQuat = quat.create();
-    quat.multiply(finalAddQuat, angleQuat, body.currentQuat);
-
-    quat.add(body.currentQuat, body.currentQuat, finalAddQuat);
-    quat.normalize(body.currentQuat, body.currentQuat);
   }
 
   function updateWorldInertia(body)
@@ -635,18 +514,22 @@ export function createPart3_1(p)
 
   function solvePosConstraints(contact, dt)
   {
-    const complianceScaled = contactParams.compliance / (dt * dt);
-
     const penBodyParams =
       getParamsForImpulse(contact.penBody, contact.penContact, contact.penMoveDir);
 
     const colliderBodyParams =
       getParamsForImpulse(contact.colliderBody, contact.colliderContact, contact.colliderMoveDir);
 
+    const effMass = 1.0 / (penBodyParams.invEffMass + colliderBodyParams.invEffMass);
+    const Jv = -vec3.dot(contact.penMoveDir, contact.penBody.currentVelocity) -
+      vec3.dot(penBodyParams.rCrossN, contact.penBody.currentAngleSpeed) +
+      vec3.dot(contact.colliderMoveDir, contact.colliderBody.currentVelocity) +
+      vec3.dot(colliderBodyParams.rCrossN, contact.colliderBody.currentAngleSpeed);
+
     let oldLambda = contact.lambda;
-    let deltaLambda = (contact.penetration - complianceScaled * contact.lambda) /
-      (penBodyParams.invEffMass + colliderBodyParams.invEffMass + complianceScaled);
-    let newLambda = Math.max(0, oldLambda + deltaLambda);
+
+    let deltaLambda = getBaumgarteLambda(effMass, contact.penetration, Jv, dt);
+    let newLambda = oldLambda + deltaLambda;
     deltaLambda = newLambda - oldLambda;
     if (deltaLambda > maxDeltaLambda)
     {
@@ -655,15 +538,17 @@ export function createPart3_1(p)
     }
     contact.lambda = newLambda;
 
-    const penBodyImpulse = vec3.clone(contact.penMoveDir);
-    vec3.scale(penBodyImpulse, penBodyImpulse, deltaLambda);
-    const colliderBodyImpulse = vec3.clone(contact.colliderMoveDir);
-    vec3.scale(colliderBodyImpulse, colliderBodyImpulse, deltaLambda);
+    updatePosAndQuatFromConstraint(
+      contact.penBody, contact.penMoveDir, penBodyParams.rCrossN, deltaLambda, dt);
+    updatePosAndQuatFromConstraint(
+      contact.colliderBody, contact.colliderMoveDir, colliderBodyParams.rCrossN, deltaLambda, dt);
+  }
 
-    updatePosAndQuatFromConstraint(
-      contact.penBody, penBodyParams.vecToContactPoint, penBodyImpulse);
-    updatePosAndQuatFromConstraint(
-      contact.colliderBody, colliderBodyParams.vecToContactPoint, colliderBodyImpulse);
+  function getBaumgarteLambda(mass, stretch, Jv, dt)
+  {
+    const lambda = -(Jv + (baumgarteBetta * stretch) / dt) / (mass);
+
+    return lambda;
   }
 
   function getParamsForImpulse(body, contact_point, move_dir)
@@ -676,7 +561,7 @@ export function createPart3_1(p)
 
     const temp = vec3.create();
     vec3.transformMat3(temp, rCrossN, body.worldInertiaInvTensor);
-    const invRotMass = vec3.dot(rCrossN, temp);
+    const invRotMass = body.mass > 0 ? vec3.dot(rCrossN, temp) : 0;
     const invEffMass = body.invMass + invRotMass;
 
     return {
@@ -687,26 +572,55 @@ export function createPart3_1(p)
     };
   }
 
-  function updatePosAndQuatFromConstraint(body, vec_to_contact_point, impulse)
+  function updatePosAndQuatFromConstraint(body, mode_dir, r_cross_n, lambda, dt)
   {
     if (body.isStatic === true)
     {
       return;
     }
+    const force = vec3.clone(mode_dir);
+    vec3.scale(force, force, -lambda);
+    const torque = vec3.clone(r_cross_n);
+    vec3.scale(torque, torque, -lambda);
 
-    vec3.scaleAndAdd(body.currentWorldPos, body.currentWorldPos, impulse, body.invMass);
+    vec3.scaleAndAdd(body.nextVelocity, body.currentVelocity, force, body.invMass * dt);
 
-    const temp = vec3.create();
-    const rCrossP = vec3.create();
-    vec3.cross(temp, vec_to_contact_point, impulse);
-    vec3.transformMat3(rCrossP, temp, body.worldInertiaInvTensor);
+    vec3.transformMat3(torque, torque, body.worldInertiaInvTensor);
+    vec3.scale(torque, torque, dt);
+    vec3.add(body.nextAngleSpeed, body.currentAngleSpeed, torque);
+    vec3.add(body.nextAngleSpeed, body.nextAngleSpeed, getGyroTerm(body, dt));
+  }
 
-    const angleQuat = quat.fromValues(0.5 * rCrossP[0], 0.5 * rCrossP[1], 0.5 * rCrossP[2], 0);
-    const finalAddQuat = quat.create();
-    quat.multiply(finalAddQuat, angleQuat, body.currentQuat);
+  function getGyroTerm(body, dt)
+  {
+    const Jw = vec3.create();
+    const gyroTerm = vec3.create();
 
-    quat.add(body.currentQuat, body.currentQuat, finalAddQuat);
-    quat.normalize(body.currentQuat, body.currentQuat);
+    const worldInertiaInv = mat3.create();
+    mat3.invert(worldInertiaInv, body.worldInertiaTensor);
+
+    vec3.transformMat3(Jw, body.currentAngleSpeed, worldInertiaInv);
+    vec3.cross(gyroTerm, Jw, body.currentAngleSpeed);
+    vec3.scale(gyroTerm, gyroTerm, dt);
+
+    const skewedOmega = skew(body.currentAngleSpeed);
+    const skewedJw = skew(Jw);
+
+    const skewedOmegaTimesJ = mat3.create();
+    mat3.multiply(skewedOmegaTimesJ, skewedOmega, body.worldInertiaTensor);
+
+    const yakobi = mat3.create();
+    mat3.subtract(yakobi, skewedOmegaTimesJ, skewedJw);
+    mat3.multiplyScalar(yakobi, yakobi, dt);
+    mat3.add(yakobi, yakobi, body.worldInertiaTensor);
+
+    const yakobiInv = mat3.create();
+    mat3.invert(yakobiInv, yakobi);
+
+    const angleCorrection = vec3.create();
+    vec3.transformMat3(angleCorrection, gyroTerm, yakobiInv);
+
+    return angleCorrection;
   }
 
   function postPosSolve(body, dt)
@@ -716,23 +630,24 @@ export function createPart3_1(p)
       return;
     }
 
-    vec3.subtract(body.currentVelocity, body.currentWorldPos, body.prevWorldPos);
-    vec3.scale(body.currentVelocity, body.currentVelocity, 1 / dt);
-    const deltaQuat = quat.create();
-    const prevQuatInv = quat.create();
-    quat.invert(prevQuatInv, body.prevQuat);
-    quat.multiply(deltaQuat, body.currentQuat, prevQuatInv);
+    vec3.scaleAndAdd(body.nextVelocity, body.nextVelocity, extAcceleration, dt);
 
-    body.currentAngleSpeed = vec3.fromValues(deltaQuat[0], deltaQuat[1], deltaQuat[2]);
-    vec3.scale(body.currentAngleSpeed, body.currentAngleSpeed, 2 / dt);
+    vec3.add(
+      body.nextWorldPos, body.currentWorldPos, vec3.scale(vec3.create(), body.nextVelocity, dt));
 
-    if (deltaQuat[3] < 0)
-    {
-      vec3.scale(body.currentAngleSpeed, -1);
-    }
+    const finalAddQuat = quat.create();
+    const angleQuat = quat.fromValues(
+      0.5 * dt * body.nextAngleSpeed[0],
+      0.5 * dt * body.nextAngleSpeed[1],
+      0.5 * dt * body.nextAngleSpeed[2],
+      0);
 
-    mat4.fromRotationTranslation(
-      body.currentTransformMatrix, body.currentQuat, body.currentWorldPos);
+    quat.multiply(finalAddQuat, angleQuat, body.currentQuat);
+
+    quat.add(body.nextQuat, body.currentQuat, finalAddQuat);
+    quat.normalize(body.nextQuat, body.nextQuat);
+
+    mat4.fromRotationTranslation(body.currentTransformMatrix, body.nextQuat, body.nextWorldPos);
     mat4.invert(body.invCurrentTransformMatrix, body.currentTransformMatrix);
   }
 
@@ -801,9 +716,8 @@ export function createPart3_1(p)
     p.fill(229, 231, 235);
     p.textSize(14);
     p.textAlign(p.LEFT, p.TOP);
-    p.text("Part 3: 10 rigid bodies collision", 32, 30);
-    p.text(`Mode: ${sim_modes[currentMode].label}`, 32, 56);
-    p.text("Press R to reset. T to stop/continue simulation", 32, 82);
+    p.text("Part 3: 10 rigid bodies collision (Sequentinal Impulses)", 32, 30);
+    p.text("Press R to reset. T to stop/continue simulation", 32, 56);
     p.pop();
   }
 }
@@ -851,20 +765,22 @@ function makeBody(mass, width, height, depth, worldPos, initRotation, isStatic)
   return {
     isStatic : isStatic,
     mass : mass,
-    invMass : 1.0 / mass,
+    invMass : mass > 0 ? 1.0 / mass : 0,
     width : width,
     height : height,
     depth : depth,
-    prevWorldPos : worldPos,
-    currentWorldPos : vec3.clone(worldPos),
+    currentWorldPos : worldPos,
+    nextWorldPos : vec3.clone(worldPos),
     currentVelocity : vec3.fromValues(0, 0, 0),
+    nextVelocity : vec3.fromValues(0, 0, 0),
     localInertiaTensor : inertia,
     worldInertiaTensor : worldInertia,
     worldInertiaInvTensor : worldInertiaInv,
     currentAngularMomentum : initialAngularMomentum,
-    prevQuat : initialQuat,
-    currentQuat : nextQuat,
+    currentQuat : initialQuat,
+    nextQuat : nextQuat,
     currentAngleSpeed : currentAngleSpeed,
+    nextAngleSpeed : vec3.clone(currentAngleSpeed),
     currentTransformMatrix : transform,
     invCurrentTransformMatrix : invTransform,
 
