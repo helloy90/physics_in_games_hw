@@ -1,10 +1,5 @@
-import {createPart1} from "./parts/part1.js";
-import {createPart2_1} from "./parts/part2.1.js";
-import {createPart2_2} from "./parts/part2.2.js";
-import {createPart2_3} from "./parts/part2.3.js";
-import {createPart3_1} from "./parts/part3.1.js";
-import {createPart3_2} from "./parts/part3.2.js";
-import {createPart3_3} from "./parts/part3.3.js";
+import {createCube} from "./parts/cube.js";
+import {createSphere} from "./parts/sphere.js";
 import {TaskHandler} from "./taskHandler.js";
 
 new p5((p) => {
@@ -19,27 +14,20 @@ new p5((p) => {
     p.textFont(font);
     camera = p.createCamera();
 
-    task.loadPart("part1", createPart1(p));
-    task.loadPart("part2.1", createPart2_1(p));
-    task.loadPart("part2.2", createPart2_2(p));
-    task.loadPart("part2.3", createPart2_3(p));
-    task.loadPart("part3.1", createPart3_1(p));
-    task.loadPart("part3.2", createPart3_2(p));
-    task.loadPart("part3.3", createPart3_3(p));
+    task.loadPart("Cube", createCube(p));
+    task.loadPart("Sphere", createSphere(p));
 
-    task.setPart("part1");
+    task.setPart("Cube");
   };
 
   p.draw = () => {
     p.ambientLight(255);
     p.background(200);
 
-    p.orbitControl(2.5, 2.5, 2.5);
-
     task.update(physics_delta);
 
-    // drawPlane(p, 500, 0, -30, 0);
-    drawGrid(p, 500, 50, 0, -30, 0);
+    drawPlane(p, 500, 0, -20, 0);
+    drawGrid(p, 500, 50, 0, -20, 0);
 
     task.render();
 
@@ -60,12 +48,12 @@ new p5((p) => {
 
     p.push();
     p.noStroke();
-    p.translate(-p.width / 2, -p.height / 2);
+    p.translate(-p.width / 1.6, -p.height / 2.5);
     p.fill(255, 255, 220);
     p.textSize(20);
     p.textAlign(p.LEFT, p.BOTTOM);
     p.text(`Scene: ${task.currentPartName}`, 16, p.height - 40);
-    p.text(`Press 1, 2, 3, 4, 5, 6, 7 to switch to needed scene`, 16, p.height - 16);
+    p.text(`Press 1 to switch to Cube, 2 to switch to Sphere`, 16, p.height - 16);
     p.pop();
 
     p.camera(...camParams);
@@ -74,19 +62,9 @@ new p5((p) => {
 
   p.keyPressed = () => {
     if (p.key === "1")
-      task.setPart("part1");
+      task.setPart("Cube");
     if (p.key === "2")
-      task.setPart("part2.1");
-    if (p.key === "3")
-      task.setPart("part2.2");
-    if (p.key === "4")
-      task.setPart("part2.3");
-    if (p.key === "5")
-      task.setPart("part3.1");
-    if (p.key === "6")
-      task.setPart("part3.2");
-    if (p.key === "7")
-      task.setPart("part3.3");
+      task.setPart("Sphere");
     task.keyPressed(p.key);
   };
 
@@ -95,6 +73,8 @@ new p5((p) => {
   p.mouseDragged = () => { task.mouseDragged(p.mouseX, p.mouseY); };
 
   p.mouseReleased = () => { task.mouseReleased(p.mouseX, p.mouseY); };
+
+  p.mouseWheel = (event) => { task.mouseWheel(event); };
 
   p.windowResized = () => { p.resizeCanvas(window.innerWidth, window.innerHeight); };
 });

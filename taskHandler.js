@@ -81,4 +81,12 @@ export class TaskHandler
       this.currentPart.mouseReleased(x, y);
     }
   }
+
+  mouseWheel(event)
+  {
+    if (this.currentPart?.mouseWheel)
+    {
+      this.currentPart.mouseWheel(event);
+    }
+  }
 }
